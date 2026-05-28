@@ -41,7 +41,7 @@ For a full usage guide, see the **[Documentation](https://hddmonitor.github.io/d
 
 ## Building from Source
 
-Requires **MinGW-w64** (`g++` + `windres`). On Linux, use the cross-compiler `x86_64-w64-mingw32-g++`.
+Requires **MinGW-w64** (`g++` + `windres`).
 
 ```sh
 # Clone the repo
