@@ -200,7 +200,7 @@ static void Snapshot_Diff(void)
             char szTitle[64], szMsg[128];
             const char* szType = (g_Drives[i].eType == DRIVE_TYPE_USB) ? "USB Drive" :
                                  (g_Drives[i].eType == DRIVE_TYPE_NVME) ? "NVMe Drive" :
-                                 (g_Drives[i].eType == DRIVE_TYPE_M2_SATA) ? "M.2 SATA SSD" :
+                                 (g_Drives[i].eType == DRIVE_TYPE_M2_SATA) ? "SSD" :
                                  (g_Drives[i].eType == DRIVE_TYPE_SSD_SATA) ? "SSD" : "HDD";
             lstrcpyA(szTitle, "Drive Connected");
             if (strlen(g_Drives[i].szModel) > 0)

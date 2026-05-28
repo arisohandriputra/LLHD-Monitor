@@ -145,7 +145,7 @@ const char* GetDriveTypeName(DRIVE_TYPE eType)
     case DRIVE_TYPE_SSD_SATA: return "SSD (SATA)";
     case DRIVE_TYPE_NVME:     return "NVMe SSD";
     case DRIVE_TYPE_USB:      return "USB/External";
-    case DRIVE_TYPE_M2_SATA:  return "M.2 SATA SSD";
+    case DRIVE_TYPE_M2_SATA:  return "SSD";
     default:                  return "Unknown";
     }
 }
