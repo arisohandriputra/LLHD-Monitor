@@ -200,6 +200,7 @@ static void Snapshot_Diff(void)
             char szTitle[64], szMsg[128];
             const char* szType = (g_Drives[i].eType == DRIVE_TYPE_USB) ? "USB Drive" :
                                  (g_Drives[i].eType == DRIVE_TYPE_NVME) ? "NVMe Drive" :
+                                 (g_Drives[i].eType == DRIVE_TYPE_M2_SATA) ? "M.2 SATA SSD" :
                                  (g_Drives[i].eType == DRIVE_TYPE_SSD_SATA) ? "SSD" : "HDD";
             lstrcpyA(szTitle, "Drive Connected");
             if (strlen(g_Drives[i].szModel) > 0)
@@ -528,34 +529,32 @@ LRESULT CALLBACK HealthBarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
             int cyBar = rc.bottom - rc.top;
             int rx    = 5;
 
+            /* --- single color based on health, top-to-bottom gradient for glass look --- */
             {
-                typedef struct { float pos; int r; int g; int b; } ColorStop;
-                static const ColorStop stops[] = {
-                    { 0.00f,  210,  30,  30 },
-                    { 0.15f,  210,  80,   0 },
-                    { 0.30f,  190, 140,   0 },
-                    { 0.50f,  120, 170,   0 },
-                    { 0.70f,   30, 160,  50 },
-                    { 1.00f,   20, 150,  50 }
-                };
-                int nStops = 6;
-                int x;
-                for (x = 0; x < cxBar; x++) {
-                    float t = (cxBar > 1) ? (float)x / (float)(cxBar - 1) : 0.0f;
-                    int seg = 0;
-                    int k;
-                    for (k = 0; k < nStops - 1; k++) {
-                        if (t >= stops[k].pos && t <= stops[k+1].pos) { seg = k; break; }
-                    }
-                    float segLen = stops[seg+1].pos - stops[seg].pos;
-                    float frac   = (segLen > 0.0f) ? (t - stops[seg].pos) / segLen : 0.0f;
-                    int cr = stops[seg].r + (int)(frac * (stops[seg+1].r - stops[seg].r));
-                    int cg = stops[seg].g + (int)(frac * (stops[seg+1].g - stops[seg].g));
-                    int cb = stops[seg].b + (int)(frac * (stops[seg+1].b - stops[seg].b));
+                COLORREF clrTop, clrBot;
+                if (nHealth < 0 || nHealth == 100) {
+                    clrTop = RGB( 50, 200,  80);
+                    clrBot = RGB( 20, 140,  50);
+                } else if (nHealth >= 70) {
+                    clrTop = RGB( 90, 210,  60);
+                    clrBot = RGB( 50, 155,  30);
+                } else if (nHealth >= 40) {
+                    clrTop = RGB(240, 160,  20);
+                    clrBot = RGB(190, 110,   5);
+                } else {
+                    clrTop = RGB(220,  50,  40);
+                    clrBot = RGB(160,  20,  15);
+                }
+                int y;
+                for (y = 0; y < cyBar; y++) {
+                    float t  = (cyBar > 1) ? (float)y / (float)(cyBar - 1) : 0.0f;
+                    int cr = (int)(GetRValue(clrTop) + t * (int)(GetRValue(clrBot) - GetRValue(clrTop)));
+                    int cg = (int)(GetGValue(clrTop) + t * (int)(GetGValue(clrBot) - GetGValue(clrTop)));
+                    int cb = (int)(GetBValue(clrTop) + t * (int)(GetBValue(clrBot) - GetBValue(clrTop)));
                     HPEN hpCol = CreatePen(PS_SOLID, 1, RGB(cr, cg, cb));
                     HPEN hpOld = (HPEN)SelectObject(hdc, hpCol);
-                    MoveToEx(hdc, x, 0,      NULL);
-                    LineTo  (hdc, x, cyBar);
+                    MoveToEx(hdc, 0,     y, NULL);
+                    LineTo  (hdc, cxBar, y);
                     SelectObject(hdc, hpOld);
                     DeleteObject(hpCol);
                 }
@@ -839,16 +838,63 @@ LRESULT CALLBACK DriveBtnWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
                 clrText   = RGB(30,  35,  50);
             }
 
-            HBRUSH hbrBg  = CreateSolidBrush(clrBg);
-            HPEN   hpBord = CreatePen(PS_SOLID, 1, clrBorder);
-            HPEN   hpOld  = (HPEN)SelectObject(hdc, hpBord);
-            HBRUSH hbOld  = (HBRUSH)SelectObject(hdc, hbrBg);
             int rx = 6;
-            RoundRect(hdc, rcBuf.left, rcBuf.top, rcBuf.right, rcBuf.bottom, rx*2, rx*2);
-            SelectObject(hdc, hpOld);
-            SelectObject(hdc, hbOld);
-            DeleteObject(hpBord);
-            DeleteObject(hbrBg);
+
+            /* --- fill entire buffer with window background first (corners will show this) --- */
+            {
+                HBRUSH hbrWinBg = CreateSolidBrush(CLR_BG);
+                FillRect(hdc, &rcBuf, hbrWinBg);
+                DeleteObject(hbrWinBg);
+            }
+
+            /* --- clip to rounded rect so only rounded area gets painted --- */
+            HRGN hClipRgn = CreateRoundRectRgn(rcBuf.left, rcBuf.top, rcBuf.right+1, rcBuf.bottom+1, rx*2, rx*2);
+            SelectClipRgn(hdc, hClipRgn);
+
+            /* --- glass gradient background --- */
+            {
+                int y;
+                COLORREF clrTop, clrBot;
+                if (bSelected) {
+                    clrTop = RGB( 60, 130, 240);
+                    clrBot = RGB( 20,  80, 190);
+                } else if (bHover) {
+                    clrTop = RGB(235, 242, 255);
+                    clrBot = RGB(205, 218, 248);
+                } else {
+                    clrTop = RGB(252, 254, 255);
+                    clrBot = RGB(228, 233, 245);
+                }
+                for (y = 0; y < h; y++) {
+                    float t  = (h > 1) ? (float)y / (float)(h - 1) : 0.0f;
+                    int cr = (int)(GetRValue(clrTop) + t * (int)(GetRValue(clrBot) - GetRValue(clrTop)));
+                    int cg = (int)(GetGValue(clrTop) + t * (int)(GetGValue(clrBot) - GetGValue(clrTop)));
+                    int cb = (int)(GetBValue(clrTop) + t * (int)(GetBValue(clrBot) - GetBValue(clrTop)));
+                    HPEN hpR = CreatePen(PS_SOLID, 1, RGB(cr, cg, cb));
+                    HPEN hpO = (HPEN)SelectObject(hdc, hpR);
+                    MoveToEx(hdc, 0,  y, NULL);
+                    LineTo  (hdc, w,  y);
+                    SelectObject(hdc, hpO);
+                    DeleteObject(hpR);
+                }
+            }
+
+            /* --- glass shine (upper highlight) --- */
+            { RECT rcShineBtn = { 0, 0, w, h }; DrawGlassShine(hdc, &rcShineBtn); }
+
+            /* --- border drawn last over clip region --- */
+            {
+                HPEN   hpBord = CreatePen(PS_SOLID, 1, clrBorder);
+                HPEN   hpOld  = (HPEN)SelectObject(hdc, hpBord);
+                HBRUSH hbOld  = (HBRUSH)SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
+                RoundRect(hdc, rcBuf.left, rcBuf.top, rcBuf.right, rcBuf.bottom, rx*2, rx*2);
+                SelectObject(hdc, hpOld);
+                SelectObject(hdc, hbOld);
+                DeleteObject(hpBord);
+            }
+
+            SelectClipRgn(hdc, NULL);
+            DeleteObject(hClipRgn);
 
             SetBkMode(hdc, TRANSPARENT);
 
@@ -879,11 +925,14 @@ LRESULT CALLBACK DriveBtnWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
                 else
                     _snprintf(szHealth, sizeof(szHealth), "Health: N/A");
 
-                char szTemp[24];
+                char szCap[24];
+                FormatSize(pD->dwCapacityMB, szCap, sizeof(szCap));
+
+                char szTempStr[24];
                 if (pD->nTemperatureC > 0)
-                    _snprintf(szTemp, sizeof(szTemp), "Temp: %d°C", pD->nTemperatureC);
+                    _snprintf(szTempStr, sizeof(szTempStr), "%d°C", pD->nTemperatureC);
                 else
-                    szTemp[0] = '\0';
+                    szTempStr[0] = '\0';
 
                 int nH = (int)(pD->nHealthPercent);
                 COLORREF clrH;
@@ -918,12 +967,17 @@ LRESULT CALLBACK DriveBtnWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
                 SetTextColor(hdc, clrH);
                 DrawTextA(hdc, szHealth, -1, &rcHealth, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
 
-                if (szTemp[0] != '\0') {
-                    RECT rcTemp = { rcBuf.left + 8, rcBuf.bottom - 17, rcBuf.right - 8, rcBuf.bottom - 4 };
-                    SetTextColor(hdc, clrTemp);
-                    DrawTextA(hdc, szTemp, -1, &rcTemp, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+                /* Bottom row: capacity left, temperature right */
+                {
+                    RECT rcCap  = { rcBuf.left + 8, rcBuf.bottom - 17, (rcBuf.left + rcBuf.right) / 2, rcBuf.bottom - 4 };
+                    RECT rcTmp  = { (rcBuf.left + rcBuf.right) / 2, rcBuf.bottom - 17, rcBuf.right - 8, rcBuf.bottom - 4 };
+                    SetTextColor(hdc, clrText);
+                    DrawTextA(hdc, szCap, -1, &rcCap, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+                    if (szTempStr[0]) {
+                        SetTextColor(hdc, clrTemp);
+                        DrawTextA(hdc, szTempStr, -1, &rcTmp, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+                    }
                 }
-
                 SelectObject(hdc, hOldFont);
             }
 
@@ -1078,58 +1132,69 @@ void UpdateDriveButtons(HWND hWnd)
 void UpdateDriveInfo(HWND hWnd, int nDriveIdx)
 {
     if (nDriveIdx < 0 || nDriveIdx >= g_nDriveCount) {
-        SetDlgItemTextA(hWnd, IDC_MODEL_STATIC,    "Model        -");
-        SetDlgItemTextA(hWnd, IDC_SERIAL_STATIC,   "Serial No.   -");
-        SetDlgItemTextA(hWnd, IDC_FIRMWARE_STATIC, "Firmware     -");
-        SetDlgItemTextA(hWnd, IDC_SIZE_STATIC,     "Capacity     -");
-        SetDlgItemTextA(hWnd, IDC_STATUS_STATIC,   "S.M.A.R.T.   Not Available");
-        SetDlgItemTextA(hWnd, IDC_PREDICT_STATIC,  "");
+        SetDlgItemTextA(hWnd, IDC_MODEL_STATIC,       "-");
+        SetDlgItemTextA(hWnd, IDC_SERIAL_STATIC,      "-");
+        SetDlgItemTextA(hWnd, IDC_FIRMWARE_STATIC,    "-");
+        SetDlgItemTextA(hWnd, IDC_SIZE_STATIC,        "-");
+        SetDlgItemTextA(hWnd, IDC_TEMP_STATIC,        "-");
+        SetDlgItemTextA(hWnd, IDC_STATUS_STATIC,      "Not Available");
+        SetDlgItemTextA(hWnd, IDC_READ_SPEED_STATIC,  "-");
+
+        SetDlgItemTextA(hWnd, IDC_PREDICT_STATIC,     "");
         return;
     }
 
     DRIVE_INFO* pInfo = &g_Drives[nDriveIdx];
-    char szBuf[192];
+    char szBuf[256];
 
-    _snprintf(szBuf, sizeof(szBuf), "Model        %s",
-              (strlen(pInfo->szModel) ? pInfo->szModel : "-"));
-    SetDlgItemTextA(hWnd, IDC_MODEL_STATIC, szBuf);
+    SetDlgItemTextA(hWnd, IDC_MODEL_STATIC,
+                    strlen(pInfo->szModel) ? pInfo->szModel : "-");
 
-    _snprintf(szBuf, sizeof(szBuf), "Serial No.   %s",
-              (strlen(pInfo->szSerial) ? pInfo->szSerial : "-"));
-    SetDlgItemTextA(hWnd, IDC_SERIAL_STATIC, szBuf);
+    SetDlgItemTextA(hWnd, IDC_SERIAL_STATIC,
+                    strlen(pInfo->szSerial) ? pInfo->szSerial : "-");
 
-    _snprintf(szBuf, sizeof(szBuf), "Firmware     %s",
-              (strlen(pInfo->szFirmware) ? pInfo->szFirmware : "-"));
-    SetDlgItemTextA(hWnd, IDC_FIRMWARE_STATIC, szBuf);
+    SetDlgItemTextA(hWnd, IDC_FIRMWARE_STATIC,
+                    strlen(pInfo->szFirmware) ? pInfo->szFirmware : "-");
 
-    char szSize[32];
-    FormatSize(pInfo->dwCapacityMB, szSize, sizeof(szSize));
-    if (pInfo->nTemperatureC > 0)
-        _snprintf(szBuf, sizeof(szBuf), "Capacity     %s   Type: %s   Temp: %d°C",
-                  szSize, GetDriveTypeName(pInfo->eType), pInfo->nTemperatureC);
-    else
-        _snprintf(szBuf, sizeof(szBuf), "Capacity     %s   Type: %s",
+    {
+        char szSize[32];
+        FormatSize(pInfo->dwCapacityMB, szSize, sizeof(szSize));
+        _snprintf(szBuf, sizeof(szBuf), "%s   Type: %s",
                   szSize, GetDriveTypeName(pInfo->eType));
-    SetDlgItemTextA(hWnd, IDC_SIZE_STATIC, szBuf);
+        SetDlgItemTextA(hWnd, IDC_SIZE_STATIC, szBuf);
+    }
+
+    if (pInfo->nTemperatureC > 0)
+        _snprintf(szBuf, sizeof(szBuf), "%d°C", pInfo->nTemperatureC);
+    else
+        strcpy(szBuf, "-");
+    SetDlgItemTextA(hWnd, IDC_TEMP_STATIC, szBuf);
 
     if (pInfo->bIsNVMe && pInfo->bSMART_Supported) {
         _snprintf(szBuf, sizeof(szBuf),
-            "S.M.A.R.T.   NVMe Health Log   Spare: %d%%   Threshold: %d%%   Used: %d%%",
+            "NVMe Health Log   Spare: %d%%   Used: %d%%",
             (int)pInfo->nvmeHealth.AvailableSpare,
-            (int)pInfo->nvmeHealth.AvailableSpareThreshold,
             (int)pInfo->nvmeHealth.PercentageUsed);
+    } else if (pInfo->bIsNVMe && !pInfo->bSMART_Supported) {
+        strcpy(szBuf, "NVMe - Health Log not readable (run as Administrator)");
     } else if (pInfo->bIsUSB && !pInfo->bSMART_Supported) {
-        strcpy(szBuf, "S.M.A.R.T.   Not available (USB bridge not supported)");
+        strcpy(szBuf, "Not available (USB bridge not supported)");
     } else if (pInfo->bIsUSB && pInfo->bSMART_Supported) {
-        _snprintf(szBuf, sizeof(szBuf), "S.M.A.R.T.   USB SAT passthrough - %s",
+        _snprintf(szBuf, sizeof(szBuf), "USB SAT passthrough - %s",
                   pInfo->bSMART_Enabled ? "Enabled" : "Detected");
     } else if (pInfo->bSMART_Supported) {
-        _snprintf(szBuf, sizeof(szBuf), "S.M.A.R.T.   Supported & %s",
+        _snprintf(szBuf, sizeof(szBuf), "Supported   %s",
                   pInfo->bSMART_Enabled ? "Enabled" : "Disabled");
     } else {
-        strcpy(szBuf, "S.M.A.R.T.   Not Supported");
+        strcpy(szBuf, "Not Supported");
     }
     SetDlgItemTextA(hWnd, IDC_STATUS_STATIC, szBuf);
+
+    if (pInfo->nReadSpeedMBs > 0)
+        _snprintf(szBuf, sizeof(szBuf), "%d MB/s", pInfo->nReadSpeedMBs);
+    else
+        strcpy(szBuf, "-");
+    SetDlgItemTextA(hWnd, IDC_READ_SPEED_STATIC, szBuf);
 
     char szReason[256];
     szReason[0] = '\0';
@@ -1168,6 +1233,10 @@ void UpdateDriveInfo(HWND hWnd, int nDriveIdx)
     if (pInfo->bIsUSB && !pInfo->bSMART_Supported) {
         SetDlgItemTextA(hWnd, IDC_PREDICT_STATIC,
             "USB/External drive detected. SMART not accessible (bridge does not support SAT passthrough).");
+    } else if (pInfo->bIsNVMe && !pInfo->bSMART_Supported) {
+        SetDlgItemTextA(hWnd, IDC_PREDICT_STATIC,
+            "NVMe SMART data could not be read. Run as Administrator and click Refresh. "
+            "Some controllers (e.g. Samsung, SK Hynix, Micron) require Windows 10 v1903+ drivers.");
     } else if (pInfo->nHealthPercent < 0) {
         SetDlgItemTextA(hWnd, IDC_PREDICT_STATIC,
             "SMART data could not be read. Run as Administrator and click Refresh.");
@@ -1518,6 +1587,18 @@ void UpdateAttrList(HWND hWnd, int nDriveIdx)
         strcpy(r->col[2], ""); strcpy(r->col[3], "");
         nDesired = 1;
     }
+    else if (pInfo->bIsNVMe && !pInfo->bSMART_Supported) {
+        /* NVMe detected but health log could not be read */
+        ATTR_ROW* r = &rows[0];
+        strcpy(r->col[0], "--");
+        strcpy(r->col[1], "NVMe SMART: Run as Administrator and click Refresh");
+        strcpy(r->col[2], ""); strcpy(r->col[3], "");
+        r = &rows[1];
+        strcpy(r->col[0], "--");
+        strcpy(r->col[1], "Some NVMe controllers require Windows 10 v1903+ or newer driver");
+        strcpy(r->col[2], ""); strcpy(r->col[3], "");
+        nDesired = 2;
+    }
     else if (pInfo->bIsNVMe && pInfo->bSMART_Supported) {
         NVME_HEALTH_INFO_LOG* pLog = &pInfo->nvmeHealth;
         unsigned __int64 qwDataRead    = NVMeRead128Lo(pLog->DataUnitsRead);
@@ -1668,8 +1749,8 @@ void RefreshData(HWND hWnd)
     if (InterlockedCompareExchange(&g_bScanBusy, 1, 0) != 0)
         return;
 
-    HWND hBtn = GetDlgItem(hWnd, IDC_REFRESH_BTN);
-    SetWindowTextA(hBtn, "...");
+
+
 
     HANDLE hThread = CreateThread(NULL, 0, RefreshThreadProc, hWnd, 0, NULL);
     if (hThread)
@@ -1778,9 +1859,9 @@ static LRESULT CALLBACK AboutDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM
                 "www.hddmonitor.github.io",
                 "",
                 "Drive support :",
-                "    \xB7  ATA / SATA / SSD (SMART via IOCTL & SAT passthrough)",
-                "    \xB7  NVMe SSD (Health Log via Storage Protocol)",
-                "    \xB7  USB / External drives (SAT passthrough where available)",
+                "    \xB7  ATA / SATA / SSD",
+                "    \xB7  NVMe / M.2 SSD",
+                "    \xB7  USB / Disk Enclosure",
                 NULL
             };
             int y = 96;
@@ -1891,14 +1972,6 @@ void CreateControls(HWND hWnd)
         hWnd, (HMENU)(IDC_DRIVE_LIST), g_hInst, NULL);
     SendMessage(hDriveLabel, WM_SETFONT, (WPARAM)g_hFontSmall, TRUE);
 
-    HWND hBtn = CreateWindowExA(
-        0, "BUTTON", "Refresh",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        DRIVE_BTN_PANEL_W + 10, 8, 80, 24,
-        hWnd, (HMENU)IDC_REFRESH_BTN, g_hInst, NULL
-    );
-    SendMessage(hBtn, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
-
     int nRightX = DRIVE_BTN_PANEL_W + 10;
     int nBarsW  = 190;
 
@@ -1924,48 +1997,104 @@ void CreateControls(HWND hWnd)
         nRightX, 118, nBarsW, 40,
         hWnd, (HMENU)IDC_HEALTH_BAR_FRAME, g_hInst, NULL);
 
-    int nInfoX  = nRightX + nBarsW + 10;
-    int nInfoY  = 40;
-    int nInfoH  = 17;
-    int nInfoGap = 2;
-    int nInfoW  = 300;
+    int nInfoX   = nRightX + nBarsW + 10;
+    int nInfoY   = 36;
+    int nInfoH   = 18;
+    int nInfoGap = 4;
+    int nLblW    = 90;
+    int nValX    = nInfoX + nLblW + 4;
+    int nValW    = WINDOW_W - nValX - 8;
 
-    HWND hModel = CreateWindowExA(0, "STATIC", "Model        -",
+    /* --- Row 0: Model --- */
+    { HWND h = CreateWindowExA(0, "STATIC", "Model",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        nInfoX, nInfoY, nInfoW, nInfoH,
+        nInfoX, nInfoY + (nInfoH + nInfoGap) * 0, nLblW, nInfoH,
+        hWnd, (HMENU)IDC_MODEL_LABEL, g_hInst, NULL);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontSmall, TRUE); }
+    { HWND h = CreateWindowExA(0, "STATIC", "-",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        nValX, nInfoY + (nInfoH + nInfoGap) * 0, nValW, nInfoH,
         hWnd, (HMENU)IDC_MODEL_STATIC, g_hInst, NULL);
-    SendMessage(hModel, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
-    HWND hSerial = CreateWindowExA(0, "STATIC", "Serial No.   -",
+    /* --- Row 1: Serial No. --- */
+    { HWND h = CreateWindowExA(0, "STATIC", "Serial No.",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        nInfoX, nInfoY + (nInfoH + nInfoGap) * 1, nInfoW, nInfoH,
+        nInfoX, nInfoY + (nInfoH + nInfoGap) * 1, nLblW, nInfoH,
+        hWnd, (HMENU)IDC_SERIAL_LABEL, g_hInst, NULL);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontSmall, TRUE); }
+    { HWND h = CreateWindowExA(0, "STATIC", "-",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        nValX, nInfoY + (nInfoH + nInfoGap) * 1, nValW, nInfoH,
         hWnd, (HMENU)IDC_SERIAL_STATIC, g_hInst, NULL);
-    SendMessage(hSerial, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
-    HWND hFirm = CreateWindowExA(0, "STATIC", "Firmware     -",
+    /* --- Row 2: Firmware --- */
+    { HWND h = CreateWindowExA(0, "STATIC", "Firmware",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        nInfoX, nInfoY + (nInfoH + nInfoGap) * 2, nInfoW, nInfoH,
+        nInfoX, nInfoY + (nInfoH + nInfoGap) * 2, nLblW, nInfoH,
+        hWnd, (HMENU)IDC_FIRMWARE_LABEL, g_hInst, NULL);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontSmall, TRUE); }
+    { HWND h = CreateWindowExA(0, "STATIC", "-",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        nValX, nInfoY + (nInfoH + nInfoGap) * 2, nValW, nInfoH,
         hWnd, (HMENU)IDC_FIRMWARE_STATIC, g_hInst, NULL);
-    SendMessage(hFirm, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
-    HWND hSize = CreateWindowExA(0, "STATIC", "Capacity     -",
+    /* --- Row 3: Capacity --- */
+    { HWND h = CreateWindowExA(0, "STATIC", "Capacity",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        nInfoX, nInfoY + (nInfoH + nInfoGap) * 3, nInfoW, nInfoH,
+        nInfoX, nInfoY + (nInfoH + nInfoGap) * 3, nLblW, nInfoH,
+        hWnd, (HMENU)IDC_SIZE_LABEL, g_hInst, NULL);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontSmall, TRUE); }
+    { HWND h = CreateWindowExA(0, "STATIC", "-",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        nValX, nInfoY + (nInfoH + nInfoGap) * 3, nValW, nInfoH,
         hWnd, (HMENU)IDC_SIZE_STATIC, g_hInst, NULL);
-    SendMessage(hSize, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
-    HWND hSmartSt = CreateWindowExA(0, "STATIC", "S.M.A.R.T.   -",
+    /* --- Row 4: Temperature --- */
+    { HWND h = CreateWindowExA(0, "STATIC", "Temperature",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        nInfoX, nInfoY + (nInfoH + nInfoGap) * 4, nInfoW, nInfoH,
+        nInfoX, nInfoY + (nInfoH + nInfoGap) * 4, nLblW, nInfoH,
+        hWnd, (HMENU)IDC_TEMP_LABEL, g_hInst, NULL);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontSmall, TRUE); }
+    { HWND h = CreateWindowExA(0, "STATIC", "-",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        nValX, nInfoY + (nInfoH + nInfoGap) * 4, nValW, nInfoH,
+        hWnd, (HMENU)IDC_TEMP_STATIC, g_hInst, NULL);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
+
+    /* --- Row 5: S.M.A.R.T. --- */
+    { HWND h = CreateWindowExA(0, "STATIC", "S.M.A.R.T.",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        nInfoX, nInfoY + (nInfoH + nInfoGap) * 5, nLblW, nInfoH,
+        hWnd, (HMENU)IDC_STATUS_LABEL, g_hInst, NULL);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontSmall, TRUE); }
+    { HWND h = CreateWindowExA(0, "STATIC", "-",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        nValX, nInfoY + (nInfoH + nInfoGap) * 5, nValW, nInfoH,
         hWnd, (HMENU)IDC_STATUS_STATIC, g_hInst, NULL);
-    SendMessage(hSmartSt, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
+
+    /* --- Row 6: Read Speed --- */
+    { HWND h = CreateWindowExA(0, "STATIC", "Ave. Speed",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        nInfoX, nInfoY + (nInfoH + nInfoGap) * 6, nLblW, nInfoH,
+        hWnd, (HMENU)IDC_READ_SPEED_LABEL, g_hInst, NULL);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontSmall, TRUE); }
+    { HWND h = CreateWindowExA(0, "STATIC", "-",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        nValX, nInfoY + (nInfoH + nInfoGap) * 6, nValW, nInfoH,
+        hWnd, (HMENU)IDC_READ_SPEED_STATIC, g_hInst, NULL);
+      SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
     HWND hPred = CreateWindowExA(0, "STATIC", "",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        nRightX, 168, 540, 17,
+        nRightX, 218, 540, 17,
         hWnd, (HMENU)IDC_PREDICT_STATIC, g_hInst, NULL);
-    SendMessage(hPred, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
 
+    SendMessage(hPred, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE);
     HWND hList = CreateWindowExA(
         WS_EX_CLIENTEDGE, WC_LISTVIEWA, NULL,
         WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER,
@@ -1993,7 +2122,22 @@ void CreateControls(HWND hWnd)
 
 static LRESULT HandleCtlColor(HWND hWnd, WPARAM wParam)
 {
-    HDC hdc = (HDC)wParam;
+    HDC  hdc     = (HDC)wParam;
+
+
+    /* Check if this is a label control (dim color) */
+    HWND hSender = WindowFromDC(hdc);
+    if (hSender) {
+        int id = GetDlgCtrlID(hSender);
+        if (id == IDC_MODEL_LABEL    || id == IDC_SERIAL_LABEL   ||
+            id == IDC_FIRMWARE_LABEL || id == IDC_SIZE_LABEL      ||
+            id == IDC_TEMP_LABEL     || id == IDC_STATUS_LABEL    ||
+            id == IDC_READ_SPEED_LABEL) {
+            SetTextColor(hdc, CLR_TEXT_DIM);
+            SetBkColor(hdc, CLR_BG);
+            return (LRESULT)g_hbrBG;
+        }
+    }
     SetTextColor(hdc, CLR_TEXT);
     SetBkColor(hdc, CLR_BG);
     return (LRESULT)g_hbrBG;
@@ -2011,7 +2155,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         TrayIcon_Add(hWnd);
         DeviceNotify_Register(hWnd);
         SetTimer(hWnd, IDT_REFRESH, REFRESH_INTERVAL_MS, NULL);
-        PostMessage(hWnd, WM_COMMAND, MAKEWPARAM(IDC_REFRESH_BTN, BN_CLICKED), 0);
+        RefreshData(hWnd);
 
         Autostart_InitFirstRun();
         Autostart_RefreshPath();
@@ -2371,10 +2515,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
             int nCtrl = LOWORD(wParam);
 
-            if (nCtrl == IDC_REFRESH_BTN) {
-                RefreshData(hWnd);
-            }
-            else if (nCtrl >= IDC_DRIVE_BTN_BASE && nCtrl < IDC_DRIVE_BTN_BASE + MAX_DRIVES) {
+            if (nCtrl >= IDC_DRIVE_BTN_BASE && nCtrl < IDC_DRIVE_BTN_BASE + MAX_DRIVES) {
                 int nSel = nCtrl - IDC_DRIVE_BTN_BASE;
                 if (nSel >= 0 && nSel < g_nDriveCount) {
                     g_nSelectedDrive = nSel;
@@ -2418,8 +2559,8 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_APP_REFRESH_DONE:
         InterlockedExchange(&g_bScanBusy, 0);
         {
-            HWND hBtnDone = GetDlgItem(hWnd, IDC_REFRESH_BTN);
-            SetWindowTextA(hBtnDone, "Refresh");
+
+
 
             UpdateDriveButtons(hWnd);
 
@@ -2464,8 +2605,8 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 }
             }
 
-            HWND hBtn   = GetDlgItem(hWnd, IDC_REFRESH_BTN);
-            if (hBtn) SetWindowPos(hBtn, NULL, DRIVE_BTN_PANEL_W + 10, 8, 80, 24, SWP_NOZORDER);
+
+
 
             int nRightX = DRIVE_BTN_PANEL_W + 10;
             int nBarsW  = 190;
@@ -2473,25 +2614,40 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             int nInfoW  = cxClient - nInfoX - 8;
             if (nInfoW < 80) nInfoW = 80;
 
-            HWND hArr[] = { GetDlgItem(hWnd, IDC_MODEL_STATIC),
-                            GetDlgItem(hWnd, IDC_SERIAL_STATIC),
-                            GetDlgItem(hWnd, IDC_FIRMWARE_STATIC),
-                            GetDlgItem(hWnd, IDC_SIZE_STATIC),
-                            GetDlgItem(hWnd, IDC_STATUS_STATIC) };
-            int nInfoY = 40, nInfoH = 17, nInfoGap = 2;
-            int k;
-            for (k = 0; k < 5; k++) {
-                if (hArr[k])
-                    SetWindowPos(hArr[k], NULL, nInfoX, nInfoY + (nInfoH + nInfoGap) * k,
-                                 nInfoW, nInfoH, SWP_NOZORDER);
-            }
 
+            int nLblW2  = 90;
+            int nValX2  = nInfoX + nLblW2 + 4;
+            int nValW2  = cxClient - nValX2 - 8;
+            if (nValW2 < 40) nValW2 = 40;
+            int nInfoY2 = 36, nInfoH2 = 18, nInfoGap2 = 4;
+            /* Resize label controls */
+            { int lblIds[] = { IDC_MODEL_LABEL, IDC_SERIAL_LABEL, IDC_FIRMWARE_LABEL,
+                               IDC_SIZE_LABEL, IDC_TEMP_LABEL, IDC_STATUS_LABEL,
+                               IDC_READ_SPEED_LABEL };
+              int k2;
+              for (k2 = 0; k2 < 7; k2++) {
+                  HWND hL = GetDlgItem(hWnd, lblIds[k2]);
+                  if (hL) SetWindowPos(hL, NULL, nInfoX,
+                      nInfoY2 + (nInfoH2 + nInfoGap2) * k2, nLblW2, nInfoH2, SWP_NOZORDER);
+              }
+            }
+            /* Resize value controls */
+            { int valIds[] = { IDC_MODEL_STATIC, IDC_SERIAL_STATIC, IDC_FIRMWARE_STATIC,
+                               IDC_SIZE_STATIC, IDC_TEMP_STATIC, IDC_STATUS_STATIC,
+                               IDC_READ_SPEED_STATIC };
+              int k3;
+              for (k3 = 0; k3 < 7; k3++) {
+                  HWND hV = GetDlgItem(hWnd, valIds[k3]);
+                  if (hV) SetWindowPos(hV, NULL, nValX2,
+                      nInfoY2 + (nInfoH2 + nInfoGap2) * k3, nValW2, nInfoH2, SWP_NOZORDER);
+              }
+            }
             HWND hPred = GetDlgItem(hWnd, IDC_PREDICT_STATIC);
-            if (hPred) SetWindowPos(hPred, NULL, nRightX, 168, cxClient - nRightX - 8, 17, SWP_NOZORDER);
+        if (hPred) SetWindowPos(hPred, NULL, nRightX, 218, cxClient - nRightX - 8, 17, SWP_NOZORDER);
 
             HWND hList = GetDlgItem(hWnd, IDC_ATTR_LIST);
             if (hList) {
-                int nListTop = 192;
+                int nListTop = 243;
                 int nListH   = cyClient - nListTop - 8;
                 if (nListH < 50) nListH = 50;
                 SetWindowPos(hList, NULL, nRightX, nListTop,

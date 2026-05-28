@@ -145,6 +145,7 @@ const char* GetDriveTypeName(DRIVE_TYPE eType)
     case DRIVE_TYPE_SSD_SATA: return "SSD (SATA)";
     case DRIVE_TYPE_NVME:     return "NVMe SSD";
     case DRIVE_TYPE_USB:      return "USB/External";
+    case DRIVE_TYPE_M2_SATA:  return "M.2 SATA SSD";
     default:                  return "Unknown";
     }
 }
@@ -215,52 +216,46 @@ BOOL IsNVMeDrive(HANDLE hDrive)
     if (bBusType == 17)
         return TRUE;
 
-    MY_STORAGE_PROTOCOL_QUERY q;
-    MY_PROTOCOL_DATA_DESCRIPTOR d;
+    /* Use single buffer for both input and output - required by Windows */
+    BYTE nvmeBuf[sizeof(MY_STORAGE_PROTOCOL_QUERY) + sizeof(NVME_HEALTH_INFO_LOG) + 64];
+    ZeroMemory(nvmeBuf, sizeof(nvmeBuf));
+    MY_STORAGE_PROTOCOL_QUERY* pQ = (MY_STORAGE_PROTOCOL_QUERY*)nvmeBuf;
     DWORD dwBytesRet = 0;
 
-    ZeroMemory(&q, sizeof(q));
-    ZeroMemory(&d, sizeof(d));
-
-    q.PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
-    q.QueryType  = 0;
-    q.ProtocolSpecific.ProtocolType              = MY_ProtocolTypeNvme;
-    q.ProtocolSpecific.DataType                  = MY_NVMeDataTypeLogPage;
-    q.ProtocolSpecific.ProtocolDataRequestValue  = NVME_LOG_PAGE_HEALTH_INFO;
-    q.ProtocolSpecific.ProtocolDataRequestSubValue = 0;
-    q.ProtocolSpecific.ProtocolDataOffset        = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
-    q.ProtocolSpecific.ProtocolDataLength        = 512;
+    pQ->PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
+    pQ->QueryType  = 0;
+    pQ->ProtocolSpecific.ProtocolType              = MY_ProtocolTypeNvme;
+    pQ->ProtocolSpecific.DataType                  = MY_NVMeDataTypeLogPage;
+    pQ->ProtocolSpecific.ProtocolDataRequestValue  = NVME_LOG_PAGE_HEALTH_INFO;
+    pQ->ProtocolSpecific.ProtocolDataRequestSubValue = 0;
+    pQ->ProtocolSpecific.ProtocolDataOffset        = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
+    pQ->ProtocolSpecific.ProtocolDataLength        = sizeof(NVME_HEALTH_INFO_LOG);
 
     BOOL bOK = DeviceIoControl(hDrive, IOCTL_STORAGE_QUERY_PROPERTY,
-        &q, sizeof(q), &d, sizeof(d), &dwBytesRet, NULL);
+        nvmeBuf, sizeof(nvmeBuf), nvmeBuf, sizeof(nvmeBuf), &dwBytesRet, NULL);
 
     return (bOK && dwBytesRet >= 64);
 }
 
 static BOOL GetNVMeIdentify(HANDLE hDrive, DRIVE_INFO* pInfo)
 {
-    MY_STORAGE_PROTOCOL_QUERY q;
-    MY_PROTOCOL_DATA_DESCRIPTOR d;
+    /* Single buffer: Windows needs same buffer for in/out with ProtocolSpecificProperty */
+    BYTE bigBuf[sizeof(MY_STORAGE_PROTOCOL_QUERY) + 4096 + 64];
+    ZeroMemory(bigBuf, sizeof(bigBuf));
+    MY_STORAGE_PROTOCOL_QUERY* pQ = (MY_STORAGE_PROTOCOL_QUERY*)bigBuf;
     DWORD dwBytes = 0;
 
-    ZeroMemory(&q, sizeof(q));
-    ZeroMemory(&d, sizeof(d));
-
-    q.PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
-    q.QueryType  = 0;
-    q.ProtocolSpecific.ProtocolType              = MY_ProtocolTypeNvme;
-    q.ProtocolSpecific.DataType                  = MY_NVMeDataTypeIdentify;
-    q.ProtocolSpecific.ProtocolDataRequestValue  = 1;
-    q.ProtocolSpecific.ProtocolDataRequestSubValue = 0;
-    q.ProtocolSpecific.ProtocolDataOffset        = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
-    q.ProtocolSpecific.ProtocolDataLength        = 4096;
-
-    BYTE bigBuf[sizeof(MY_STORAGE_PROTOCOL_QUERY) + 4096 + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA)];
-    ZeroMemory(bigBuf, sizeof(bigBuf));
-    memcpy(bigBuf, &q, sizeof(q));
+    pQ->PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
+    pQ->QueryType  = 0;
+    pQ->ProtocolSpecific.ProtocolType              = MY_ProtocolTypeNvme;
+    pQ->ProtocolSpecific.DataType                  = MY_NVMeDataTypeIdentify;
+    pQ->ProtocolSpecific.ProtocolDataRequestValue  = 1;
+    pQ->ProtocolSpecific.ProtocolDataRequestSubValue = 0;
+    pQ->ProtocolSpecific.ProtocolDataOffset        = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
+    pQ->ProtocolSpecific.ProtocolDataLength        = 4096;
 
     BOOL bOK = DeviceIoControl(hDrive, IOCTL_STORAGE_QUERY_PROPERTY,
-        bigBuf, sizeof(q),
+        bigBuf, sizeof(bigBuf),
         bigBuf, sizeof(bigBuf),
         &dwBytes, NULL);
 
@@ -307,35 +302,38 @@ static BOOL GetNVMeIdentify(HANDLE hDrive, DRIVE_INFO* pInfo)
 
 BOOL GetNVMeHealthLog(HANDLE hDrive, DRIVE_INFO* pInfo)
 {
-    MY_STORAGE_PROTOCOL_QUERY q;
-    MY_PROTOCOL_DATA_DESCRIPTOR d;
+    /* Single buffer required: Windows writes output on top of input for ProtocolSpecificProperty */
+    BYTE buf[sizeof(MY_STORAGE_PROTOCOL_QUERY) + sizeof(NVME_HEALTH_INFO_LOG) + 64];
+    ZeroMemory(buf, sizeof(buf));
+    MY_STORAGE_PROTOCOL_QUERY* pQ = (MY_STORAGE_PROTOCOL_QUERY*)buf;
     DWORD dwBytes = 0;
 
-    ZeroMemory(&q, sizeof(q));
-    ZeroMemory(&d, sizeof(d));
-
-    q.PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
-    q.QueryType  = 0;
-    q.ProtocolSpecific.ProtocolType              = MY_ProtocolTypeNvme;
-    q.ProtocolSpecific.DataType                  = MY_NVMeDataTypeLogPage;
-    q.ProtocolSpecific.ProtocolDataRequestValue  = NVME_LOG_PAGE_HEALTH_INFO;
-    q.ProtocolSpecific.ProtocolDataRequestSubValue = 0xFFFFFFFF;
-    q.ProtocolSpecific.ProtocolDataOffset        = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
-    q.ProtocolSpecific.ProtocolDataLength        = sizeof(NVME_HEALTH_INFO_LOG);
+    pQ->PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
+    pQ->QueryType  = 0;
+    pQ->ProtocolSpecific.ProtocolType              = MY_ProtocolTypeNvme;
+    pQ->ProtocolSpecific.DataType                  = MY_NVMeDataTypeLogPage;
+    pQ->ProtocolSpecific.ProtocolDataRequestValue  = NVME_LOG_PAGE_HEALTH_INFO;
+    pQ->ProtocolSpecific.ProtocolDataRequestSubValue = 0;
+    pQ->ProtocolSpecific.ProtocolDataOffset        = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
+    pQ->ProtocolSpecific.ProtocolDataLength        = sizeof(NVME_HEALTH_INFO_LOG);
 
     BOOL bOK = DeviceIoControl(hDrive, IOCTL_STORAGE_QUERY_PROPERTY,
-        &q, sizeof(q), &d, sizeof(d), &dwBytes, NULL);
+        buf, sizeof(buf), buf, sizeof(buf), &dwBytes, NULL);
 
     if (!bOK || dwBytes < (ULONG)(sizeof(ULONG) * 2 + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA) + 8))
         return FALSE;
+
+    /* Data starts at: Version(4) + Size(4) + ProtocolSpecificData(40) = offset 48 */
+    BYTE* pData = buf + sizeof(ULONG) + sizeof(ULONG) + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
+
     BOOL bAllZero = TRUE;
     int k;
     for (k = 0; k < 16; k++) {
-        if (d.Data[k] != 0x00) { bAllZero = FALSE; break; }
+        if (pData[k] != 0x00) { bAllZero = FALSE; break; }
     }
     if (bAllZero) return FALSE;
 
-    memcpy(&pInfo->nvmeHealth, d.Data, sizeof(NVME_HEALTH_INFO_LOG));
+    memcpy(&pInfo->nvmeHealth, pData, sizeof(NVME_HEALTH_INFO_LOG));
     pInfo->bIsNVMe = TRUE;
     pInfo->bSMART_Supported = TRUE;
     pInfo->bSMART_Enabled   = TRUE;
@@ -360,6 +358,89 @@ static BOOL GetNVMeCapacity(HANDLE hDrive, DRIVE_INFO* pInfo)
         return TRUE;
     }
     return FALSE;
+}
+
+/* Fallback NVMe health log using larger output buffer.
+   Some controllers (e.g. Samsung, SK Hynix, Micron NVMe) need a larger
+   descriptor buffer aligned to 4096 bytes to return health log data. */
+static BOOL GetNVMeHealthLogFallback(HANDLE hDrive, DRIVE_INFO* pInfo)
+{
+    /* Allocate a larger buffer on heap to handle controllers that return
+       more data than our stack-allocated MY_PROTOCOL_DATA_DESCRIPTOR */
+#define NVME_FALLBACK_BUF_SIZE 4096
+    BYTE* pBuf = (BYTE*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, NVME_FALLBACK_BUF_SIZE);
+    if (!pBuf) return FALSE;
+
+    MY_STORAGE_PROTOCOL_QUERY* pq = (MY_STORAGE_PROTOCOL_QUERY*)pBuf;
+    pq->PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
+    pq->QueryType  = 0;
+    pq->ProtocolSpecific.ProtocolType             = MY_ProtocolTypeNvme;
+    pq->ProtocolSpecific.DataType                 = MY_NVMeDataTypeLogPage;
+    pq->ProtocolSpecific.ProtocolDataRequestValue = NVME_LOG_PAGE_HEALTH_INFO;
+    pq->ProtocolSpecific.ProtocolDataRequestSubValue = 0;
+    pq->ProtocolSpecific.ProtocolDataOffset       = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
+    pq->ProtocolSpecific.ProtocolDataLength       = sizeof(NVME_HEALTH_INFO_LOG);
+
+    DWORD dwBytes = 0;
+    BOOL bOK = DeviceIoControl(hDrive, IOCTL_STORAGE_QUERY_PROPERTY,
+        pBuf, NVME_FALLBACK_BUF_SIZE,
+        pBuf, NVME_FALLBACK_BUF_SIZE,
+        &dwBytes, NULL);
+
+    if (!bOK || dwBytes < (DWORD)(sizeof(ULONG)*2 + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA) + 8)) {
+        HeapFree(GetProcessHeap(), 0, pBuf);
+        return FALSE;
+    }
+
+    /* Data starts after Version(4) + Size(4) + ProtocolSpecificData struct */
+    BYTE* pData = pBuf + sizeof(ULONG) + sizeof(ULONG) + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
+    /* Check not all zero */
+    BOOL bAllZero = TRUE;
+    int k;
+    for (k = 0; k < 16; k++) {
+        if (pData[k] != 0x00) { bAllZero = FALSE; break; }
+    }
+    if (bAllZero) {
+        HeapFree(GetProcessHeap(), 0, pBuf);
+        return FALSE;
+    }
+
+    memcpy(&pInfo->nvmeHealth, pData, sizeof(NVME_HEALTH_INFO_LOG));
+    pInfo->bIsNVMe = TRUE;
+    pInfo->bSMART_Supported = TRUE;
+    pInfo->bSMART_Enabled   = TRUE;
+
+    WORD wTempK = (WORD)(pInfo->nvmeHealth.CompositeTemperature[0] |
+                        ((WORD)pInfo->nvmeHealth.CompositeTemperature[1] << 8));
+    if (wTempK > 273 && wTempK < 400)
+        pInfo->nTemperatureC = (int)wTempK - 273;
+
+    HeapFree(GetProcessHeap(), 0, pBuf);
+    return TRUE;
+#undef NVME_FALLBACK_BUF_SIZE
+}
+
+/* Detect M.2 SATA vs regular SATA by querying the adapter bus type.
+   BusType == 8 (SATA) with an SSD means M.2 SATA when connected via
+   an NVMe slot adapter, but here we just flag it correctly as SATA SSD. */
+static BYTE GetStorageBusType(HANDLE hDrive)
+{
+    STORAGE_PROPERTY_QUERY spq;
+    ZeroMemory(&spq, sizeof(spq));
+    spq.PropertyId = StorageAdapterProperty;
+    spq.QueryType  = PropertyStandardQuery;
+
+    BYTE outBuf[512];
+    ZeroMemory(outBuf, sizeof(outBuf));
+    DWORD dwBytes = 0;
+
+    if (!DeviceIoControl(hDrive, IOCTL_STORAGE_QUERY_PROPERTY,
+                         &spq, sizeof(spq), outBuf, sizeof(outBuf),
+                         &dwBytes, NULL))
+        return 0;
+
+    if (dwBytes < 9) return 0;
+    return outBuf[8]; /* STORAGE_BUS_TYPE offset */
 }
 
 static BOOL GetNVMeInfo(HANDLE hDrive, DRIVE_INFO* pInfo)
@@ -408,12 +489,24 @@ static BOOL GetNVMeInfo(HANDLE hDrive, DRIVE_INFO* pInfo)
 
     GetNVMeCapacity(hDrive, pInfo);
 
-    GetNVMeHealthLog(hDrive, pInfo);
+    /* Try primary health log first; fall back to heap-buffer variant
+       for controllers that need a larger output buffer */
+    if (!GetNVMeHealthLog(hDrive, pInfo))
+        GetNVMeHealthLogFallback(hDrive, pInfo);
 
     pInfo->eType = DRIVE_TYPE_NVME;
     pInfo->bIsNVMe = TRUE;
 
     return TRUE;
+}
+
+/* Helper: try to read NVMe SMART via GetNVMeHealthLog or fallback.
+   Exposed so ScanDrives can retry after initial GetNVMeInfo. */
+BOOL GetNVMeHealthLogEx(HANDLE hDrive, DRIVE_INFO* pInfo)
+{
+    if (GetNVMeHealthLog(hDrive, pInfo))
+        return TRUE;
+    return GetNVMeHealthLogFallback(hDrive, pInfo);
 }
 
 int CalculateHealthNVMe(DRIVE_INFO* pInfo)
@@ -460,6 +553,24 @@ DRIVE_TYPE DetectDriveType(HANDLE hDrive, DRIVE_INFO* pInfo)
     if (pInfo->bIsUSB)
         return DRIVE_TYPE_USB;
 
+    /* Check bus type first — BusType 8 = SATA, 11 = SAS, 17 = NVMe.
+       M.2 SATA drives appear as BusType 8, same as 2.5" SATA.
+       We differentiate by checking if the adapter bus type comes back as
+       SATA AND the model name or media type suggests M.2 form factor. */
+    BYTE bBusType = GetStorageBusType(hDrive);
+
+    /* Also query StorageDeviceProperty to check MediaType */
+    STORAGE_PROPERTY_QUERY spq2;
+    ZeroMemory(&spq2, sizeof(spq2));
+    spq2.PropertyId = StorageDeviceProperty;
+    spq2.QueryType  = PropertyStandardQuery;
+    BYTE devBuf[256];
+    ZeroMemory(devBuf, sizeof(devBuf));
+    DWORD dwDevBytes = 0;
+    BOOL bHasDevProp = DeviceIoControl(hDrive, IOCTL_STORAGE_QUERY_PROPERTY,
+        &spq2, sizeof(spq2), devBuf, sizeof(devBuf), &dwDevBytes, NULL);
+    BYTE bMediaType = bHasDevProp && dwDevBytes >= 8 ? devBuf[6] : 0; /* StorageMediaType */
+
     BYTE inBuf[sizeof(SENDCMDINPARAMS) - 1 + IDENTIFY_BUFFER_SIZE];
     BYTE outBuf[sizeof(SENDCMDOUTPARAMS) - 1 + IDENTIFY_BUFFER_SIZE];
     DWORD dwBytesReturned = 0;
@@ -485,12 +596,29 @@ DRIVE_TYPE DetectDriveType(HANDLE hDrive, DRIVE_INFO* pInfo)
         WORD* pIdent = (WORD*)pCop->bBuffer;
 
         WORD wRotRate = pIdent[217];
-        if (wRotRate == 0x0001)
+        if (wRotRate == 0x0001) {
+            /* SSD confirmed via ATA identify. Check if it's M.2 SATA:
+               form factor word 168 = 0x0003 means M.2, 0x0005 means M.2 2242/2280 */
+            WORD wFormFactor = pIdent[168];
+            if (wFormFactor == 0x0003 || wFormFactor == 0x0005)
+                return DRIVE_TYPE_M2_SATA;
             return DRIVE_TYPE_SSD_SATA;
+        }
         else if (wRotRate >= 0x0401)
             return DRIVE_TYPE_HDD;
     }
 
+    /* If BusType is SATA (8) and model name suggests SSD, call it SSD_SATA.
+       This catches M.2 SATA drives that don't respond to SMART_RCV_DRIVE_DATA. */
+    if (bBusType == 8) {
+        const char* szModel = pInfo->szModel;
+        if (strstr(szModel, "SSD") || strstr(szModel, "Solid") ||
+            strstr(szModel, "FLASH") || strstr(szModel, "Flash") ||
+            strstr(szModel, "MX") || strstr(szModel, "860") ||
+            strstr(szModel, "870") || strstr(szModel, "BX") ||
+            strstr(szModel, "M.2") || strstr(szModel, "SATA"))
+            return DRIVE_TYPE_SSD_SATA;
+    }
 
     const char* szModel = pInfo->szModel;
     if (strstr(szModel, "SSD") || strstr(szModel, "Solid") ||
@@ -498,6 +626,9 @@ DRIVE_TYPE DetectDriveType(HANDLE hDrive, DRIVE_INFO* pInfo)
         strstr(szModel, "MX") || strstr(szModel, "860") ||
         strstr(szModel, "870") || strstr(szModel, "BX"))
         return DRIVE_TYPE_SSD_SATA;
+
+    /* Suppress "unused variable" warnings */
+    (void)bMediaType;
 
     return DRIVE_TYPE_HDD;
 }
@@ -906,52 +1037,55 @@ BOOL GetSMARTThresholds(HANDLE hDrive, int nDrive, DRIVE_INFO* pInfo)
 
 BOOL GetSMARTViaStorageProtocol(HANDLE hDrive, DRIVE_INFO* pInfo)
 {
-    MY_STORAGE_PROTOCOL_QUERY query;
-    MY_PROTOCOL_DATA_DESCRIPTOR desc;
+    /* Single buffer for both input and output */
+    BYTE buf[sizeof(MY_STORAGE_PROTOCOL_QUERY) + 512 + 64];
+    ZeroMemory(buf, sizeof(buf));
+    MY_STORAGE_PROTOCOL_QUERY* pQ = (MY_STORAGE_PROTOCOL_QUERY*)buf;
     DWORD dwBytes = 0;
 
-    ZeroMemory(&query, sizeof(query));
-    ZeroMemory(&desc,  sizeof(desc));
-
-    query.PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
-    query.QueryType  = 0;
-    query.ProtocolSpecific.ProtocolType              = MY_ProtocolTypeAta;
-    query.ProtocolSpecific.DataType                  = MY_AtaDataTypeSmartData;
-    query.ProtocolSpecific.ProtocolDataRequestValue  = 0;
-    query.ProtocolSpecific.ProtocolDataRequestSubValue = 0;
-    query.ProtocolSpecific.ProtocolDataOffset        = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
-    query.ProtocolSpecific.ProtocolDataLength        = 512;
+    pQ->PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
+    pQ->QueryType  = 0;
+    pQ->ProtocolSpecific.ProtocolType              = MY_ProtocolTypeAta;
+    pQ->ProtocolSpecific.DataType                  = MY_AtaDataTypeSmartData;
+    pQ->ProtocolSpecific.ProtocolDataRequestValue  = 0;
+    pQ->ProtocolSpecific.ProtocolDataRequestSubValue = 0;
+    pQ->ProtocolSpecific.ProtocolDataOffset        = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
+    pQ->ProtocolSpecific.ProtocolDataLength        = 512;
 
     BOOL bOK = DeviceIoControl(hDrive, IOCTL_STORAGE_QUERY_PROPERTY,
-        &query, sizeof(query), &desc, sizeof(desc), &dwBytes, NULL);
+        buf, sizeof(buf), buf, sizeof(buf), &dwBytes, NULL);
 
-    if (!bOK || dwBytes < (ULONG)(sizeof(MY_PROTOCOL_DATA_DESCRIPTOR) - 512 + 64))
+    if (!bOK || dwBytes < (ULONG)(sizeof(ULONG)*2 + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA) + 16))
         return FALSE;
+
+    BYTE* pData = buf + sizeof(ULONG) + sizeof(ULONG) + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
 
     BOOL bAllZero = TRUE;
     int k;
     for (k = 2; k < 30; k++) {
-        if (desc.Data[k] != 0x00) { bAllZero = FALSE; break; }
+        if (pData[k] != 0x00) { bAllZero = FALSE; break; }
     }
     if (bAllZero) return FALSE;
 
-    memcpy(&pInfo->attrData, desc.Data, sizeof(SMART_ATTRIBUTE_DATA));
+    memcpy(&pInfo->attrData, pData, sizeof(SMART_ATTRIBUTE_DATA));
 
-    ZeroMemory(&query, sizeof(query));
-    ZeroMemory(&desc,  sizeof(desc));
-
-    query.PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
-    query.QueryType  = 0;
-    query.ProtocolSpecific.ProtocolType              = MY_ProtocolTypeAta;
-    query.ProtocolSpecific.DataType                  = MY_AtaDataTypeSmartThresholds;
-    query.ProtocolSpecific.ProtocolDataOffset        = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
-    query.ProtocolSpecific.ProtocolDataLength        = 512;
+    ZeroMemory(buf, sizeof(buf));
+    pQ->PropertyId = (ULONG)StorageDeviceProtocolSpecificProperty;
+    pQ->QueryType  = 0;
+    pQ->ProtocolSpecific.ProtocolType              = MY_ProtocolTypeAta;
+    pQ->ProtocolSpecific.DataType                  = MY_AtaDataTypeSmartThresholds;
+    pQ->ProtocolSpecific.ProtocolDataRequestValue  = 0;
+    pQ->ProtocolSpecific.ProtocolDataRequestSubValue = 0;
+    pQ->ProtocolSpecific.ProtocolDataOffset        = sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
+    pQ->ProtocolSpecific.ProtocolDataLength        = 512;
 
     bOK = DeviceIoControl(hDrive, IOCTL_STORAGE_QUERY_PROPERTY,
-        &query, sizeof(query), &desc, sizeof(desc), &dwBytes, NULL);
+        buf, sizeof(buf), buf, sizeof(buf), &dwBytes, NULL);
 
-    if (bOK && dwBytes >= 64)
-        memcpy(&pInfo->threshData, desc.Data, sizeof(SMART_THRESHOLD_DATA));
+    if (bOK && dwBytes >= (ULONG)(sizeof(ULONG)*2 + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA) + 16)) {
+        pData = buf + sizeof(ULONG) + sizeof(ULONG) + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
+        memcpy(&pInfo->threshData, pData, sizeof(SMART_THRESHOLD_DATA));
+    }
 
     return TRUE;
 }
@@ -1176,7 +1310,7 @@ int CalculatePerformance(DRIVE_INFO* pInfo)
     }
 
 
-    if (pInfo->bIsNVMe || pInfo->eType == DRIVE_TYPE_SSD_SATA) {
+    if (pInfo->bIsNVMe || pInfo->eType == DRIVE_TYPE_SSD_SATA || pInfo->eType == DRIVE_TYPE_M2_SATA) {
         int nPerf = (nCRCPerf * 25 + 100 * 75) / 100;
         if (nPerf < 0)   nPerf = 0;
         if (nPerf > 100) nPerf = 100;
@@ -1253,6 +1387,117 @@ void FormatSize(DWORD dwMB, char* szBuf, int nBufLen)
         _snprintf(szBuf, nBufLen, "%u MB", (unsigned)dwMB);
 }
 
+
+int MeasureReadSpeed(int nDriveIndex)
+{
+    char szPath[32];
+    _snprintf(szPath, sizeof(szPath), "\\\\.\\PhysicalDrive%d", nDriveIndex);
+
+    HANDLE hDrive = CreateFileA(szPath, GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    if (hDrive == INVALID_HANDLE_VALUE)
+        return -1;
+
+    const DWORD dwBufSize = 4 * 1024 * 1024;
+    BYTE* pBuf = (BYTE*)VirtualAlloc(NULL, dwBufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!pBuf) {
+        CloseHandle(hDrive);
+        return -1;
+    }
+
+    LARGE_INTEGER liFreq, liStart, liEnd;
+    QueryPerformanceFrequency(&liFreq);
+
+    const int nPasses = 4;
+    DWORD dwTotalRead = 0;
+    QueryPerformanceCounter(&liStart);
+
+    for (int i = 0; i < nPasses; i++) {
+        DWORD dwRead = 0;
+        HANDLE hRaw = CreateFileA(szPath, GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+            FILE_FLAG_NO_BUFFERING | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+        if (hRaw == INVALID_HANDLE_VALUE) break;
+        if (!ReadFile(hRaw, pBuf, dwBufSize, &dwRead, NULL) || dwRead == 0) {
+            CloseHandle(hRaw);
+            break;
+        }
+        dwTotalRead += dwRead;
+        CloseHandle(hRaw);
+    }
+
+    QueryPerformanceCounter(&liEnd);
+    VirtualFree(pBuf, 0, MEM_RELEASE);
+    CloseHandle(hDrive);
+
+    if (dwTotalRead == 0)
+        return -1;
+
+    double dElapsed = (double)(liEnd.QuadPart - liStart.QuadPart) / (double)liFreq.QuadPart;
+    if (dElapsed <= 0.0)
+        return -1;
+
+    int nSpeedMBs = (int)((double)dwTotalRead / (1024.0 * 1024.0) / dElapsed);
+    return nSpeedMBs;
+}
+
+int MeasureWriteSpeed(int nDriveIndex)
+{
+    char szPath[32];
+    _snprintf(szPath, sizeof(szPath), "\\\\.\\PhysicalDrive%d", nDriveIndex);
+
+    HANDLE hDrive = CreateFileA(szPath, GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    if (hDrive == INVALID_HANDLE_VALUE)
+        return -1;
+
+    DISK_PERFORMANCE dp1, dp2;
+    ZeroMemory(&dp1, sizeof(dp1));
+    ZeroMemory(&dp2, sizeof(dp2));
+    DWORD dwBytes = 0;
+
+    if (!DeviceIoControl(hDrive, IOCTL_DISK_PERFORMANCE,
+                         NULL, 0, &dp1, sizeof(dp1), &dwBytes, NULL)) {
+        CloseHandle(hDrive);
+        return -1;
+    }
+
+    const DWORD dwBufSize = 4 * 1024 * 1024;
+    BYTE* pBuf = (BYTE*)VirtualAlloc(NULL, dwBufSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (pBuf) {
+        HANDLE hRaw = CreateFileA(szPath, GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+            FILE_FLAG_NO_BUFFERING | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+        if (hRaw != INVALID_HANDLE_VALUE) {
+            DWORD dwRead = 0;
+            ReadFile(hRaw, pBuf, dwBufSize, &dwRead, NULL);
+            CloseHandle(hRaw);
+        }
+        VirtualFree(pBuf, 0, MEM_RELEASE);
+    }
+
+    dwBytes = 0;
+    if (!DeviceIoControl(hDrive, IOCTL_DISK_PERFORMANCE,
+                         NULL, 0, &dp2, sizeof(dp2), &dwBytes, NULL)) {
+        CloseHandle(hDrive);
+        return -1;
+    }
+
+    CloseHandle(hDrive);
+
+    LONGLONG llWritten = dp2.BytesWritten.QuadPart - dp1.BytesWritten.QuadPart;
+    LONGLONG llReadTime = dp2.ReadTime.QuadPart - dp1.ReadTime.QuadPart;
+    LONGLONG llWriteTime = dp2.WriteTime.QuadPart - dp1.WriteTime.QuadPart;
+
+    if (llWritten <= 0 || llWriteTime <= 0)
+        return 0;
+
+    double dSec = (double)llWriteTime / 10000000.0;
+    int nSpeedMBs = (int)((double)llWritten / (1024.0 * 1024.0) / dSec);
+    (void)llReadTime;
+    return nSpeedMBs;
+}
+
 int ScanDrives(DRIVE_INFO* pDrives, int nMaxDrives)
 {
     int nFound = 0;
@@ -1275,16 +1520,27 @@ int ScanDrives(DRIVE_INFO* pDrives, int nMaxDrives)
 
         if (IsNVMeDrive(hDrive)) {
             if (GetNVMeInfo(hDrive, pInfo)) {
+                /* If health log failed inside GetNVMeInfo, try once more now
+                   (the drive handle is still open and valid at this point) */
+                if (!pInfo->bSMART_Supported)
+                    GetNVMeHealthLogEx(hDrive, pInfo);
                 pInfo->nHealthPercent = CalculateHealthNVMe(pInfo);
                 pInfo->nPerformancePercent = CalculatePerformance(pInfo);
                 CloseHandle(hDrive);
+                pInfo->nReadSpeedMBs  = MeasureReadSpeed(nDrive);
+                pInfo->nWriteSpeedMBs = MeasureWriteSpeed(nDrive);
                 nFound++;
                 continue;
             }
             GetNVMeCapacity(hDrive, pInfo);
+            /* Last-chance health log attempt before giving up */
+            GetNVMeHealthLogEx(hDrive, pInfo);
+            if (pInfo->bSMART_Supported)
+                pInfo->nHealthPercent = CalculateHealthNVMe(pInfo);
+            else
+                pInfo->nHealthPercent = -1;
             pInfo->eType   = DRIVE_TYPE_NVME;
             pInfo->bIsNVMe = TRUE;
-            pInfo->nHealthPercent = -1;
             CloseHandle(hDrive);
             nFound++;
             continue;
@@ -1403,6 +1659,8 @@ int ScanDrives(DRIVE_INFO* pDrives, int nMaxDrives)
         pInfo->nPerformancePercent = CalculatePerformance(pInfo);
 
         CloseHandle(hDrive);
+        pInfo->nReadSpeedMBs  = MeasureReadSpeed(nDrive);
+        pInfo->nWriteSpeedMBs = MeasureWriteSpeed(nDrive);
         nFound++;
     }
 

@@ -24,6 +24,16 @@
 #define IDC_PREDICT_STATIC   1012
 #define IDC_PERF_LABEL       1013
 #define IDC_PERF_BAR_FRAME   1014
+#define IDC_TEMP_STATIC        1015
+#define IDC_READ_SPEED_STATIC  1016
+/* Two-column info panel: label controls (left column) */
+#define IDC_MODEL_LABEL        1018
+#define IDC_SERIAL_LABEL       1019
+#define IDC_FIRMWARE_LABEL     1020
+#define IDC_SIZE_LABEL         1021
+#define IDC_TEMP_LABEL         1022
+#define IDC_STATUS_LABEL       1023
+#define IDC_READ_SPEED_LABEL   1024
 #define IDC_DRIVE_BTN_BASE   1100
 #define IDM_ABOUT            2001
 #define IDM_EXIT             2002

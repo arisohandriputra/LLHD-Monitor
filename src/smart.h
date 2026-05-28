@@ -51,7 +51,8 @@ typedef enum _DRIVE_TYPE {
     DRIVE_TYPE_HDD      = 1,
     DRIVE_TYPE_SSD_SATA = 2,
     DRIVE_TYPE_NVME     = 3,
-    DRIVE_TYPE_USB      = 4
+    DRIVE_TYPE_USB      = 4,
+    DRIVE_TYPE_M2_SATA  = 5
 } DRIVE_TYPE;
 
 #pragma pack(push, 1)
@@ -145,6 +146,8 @@ typedef struct _DRIVE_INFO {
     DRIVE_TYPE  eType;
     int         nTemperatureC;
     BOOL        bIsNVMe;
+    int         nReadSpeedMBs;
+    int         nWriteSpeedMBs;
     NVME_HEALTH_INFO_LOG nvmeHealth;
     SMART_ATTRIBUTE_DATA attrData;
     SMART_THRESHOLD_DATA threshData;
@@ -273,6 +276,7 @@ BOOL  GetSMARTPredictFailure(HANDLE hDrive, int nDrive, BOOL* pbFail);
 
 BOOL  IsNVMeDrive(HANDLE hDrive);
 BOOL  GetNVMeHealthLog(HANDLE hDrive, DRIVE_INFO* pInfo);
+BOOL  GetNVMeHealthLogEx(HANDLE hDrive, DRIVE_INFO* pInfo);
 int   CalculateHealthNVMe(DRIVE_INFO* pInfo);
 
 DRIVE_TYPE DetectDriveType(HANDLE hDrive, DRIVE_INFO* pInfo);
@@ -282,5 +286,7 @@ int   CalculatePerformance(DRIVE_INFO* pInfo);
 int   ScanDrives(DRIVE_INFO* pDrives, int nMaxDrives);
 void  FormatSize(DWORD dwMB, char* szBuf, int nBufLen);
 DWORD GetRawValue(BYTE* pRaw);
+int   MeasureReadSpeed(int nDriveIndex);
+int   MeasureWriteSpeed(int nDriveIndex);
 
 #endif
