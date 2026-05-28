@@ -1,38 +1,87 @@
-**LLHD Monitor v1.0**
-=================
-LOW-LEVEL HDD MONITOR
-Supports ATA/SATA, NVMe, and USB drives
+# LLHD Monitor - Low-Level HDD Health Monitor
 
-<img width="706" height="588" alt="image" src="https://github.com/user-attachments/assets/6ffc89e9-0ea2-4463-b915-68aaaca1d90e" />
+A free, lightweight Windows utility that reads **S.M.A.R.T. data** directly from your HDD, SSD, and NVMe drives and turns it into a plain health and performance score.
 
-BUILD REQUIREMENTS
-------------------
-- Visual Studio
-- Windows SDK (included with VS)
-- No external dependencies
+<img width="756" height="618" alt="image" src="https://github.com/user-attachments/assets/e1769bdf-9209-4132-ac93-2407ecf1000c" />
 
-HOW TO BUILD
-------------
-1. Open LLHDMonitor.sln in Visual Studio
-2. Select Release | x86 (or x64)
-3. Build Solution (F7)
+**Website & Documentation → [hddmonitor.github.io](https://hddmonitor.github.io/)**
 
-RUNTIME REQUIREMENTS
---------------------
-- Windows XP SP3 or later (10/11)
-- comctl32.dll version 6.0 (included via manifest)
+---
 
-FEATURES
---------
-- Reads S.M.A.R.T. data from ATA/SATA hard drives and SSDs
-- Reads NVMe Health Information Log from NVMe SSDs
-- Attempts SAT passthrough for USB-connected drives
-- Displays all SMART attributes with ID, value, worst, threshold, raw value, status
-- Color-coded health bar (green/yellow/red)
-- Drive health percentage estimation
-- Failure prediction indicator
+## Features
 
-NOTES
------
-- USB drives may not expose SMART data (depends on USB-SATA bridge)
-- NVMe drives show Health Information Log fields instead of classic SMART attributes
+- Real-time **health and performance scores** calculated from live S.M.A.R.T. attributes
+- Full **S.M.A.R.T. attribute table** with current value, worst value, threshold, and raw reading
+- **NVMe support** via Health Info Log Page (0x02)
+- Supports **HDD, SATA SSD, NVMe, and USB** drives
+- Direct low-level hardware access — no middle layers, no abstraction
+- Multi-drive sidebar — see all drives at a glance with color-coded health
+- Single portable `.exe`, no installer, no background service, no telemetry
+
+## Screenshots
+
+> Coming soon — contributions welcome.
+
+## Requirements
+
+| | |
+|---|---|
+| OS | Windows 7 / 8 / 10 / 11 (32-bit or 64-bit) |
+| Privileges | Administrator (required for hardware access) |
+| Runtime | None — statically linked, no external dependencies |
+
+## Usage
+
+1. Download `LLHDMonitor.exe` from [Releases](../../releases)
+2. Select a drive from the sidebar and read the results
+
+> Administrator is required because reading raw S.M.A.R.T. data uses kernel-level Windows I/O control codes. The application does **not** write anything to your drives.
+
+For a full usage guide, see the **[Documentation](https://hddmonitor.github.io/docs.html)**.
+
+## Building from Source
+
+Requires **MinGW-w64** (`g++` + `windres`). On Linux, use the cross-compiler `x86_64-w64-mingw32-g++`.
+
+```sh
+# Clone the repo
+git clone https://github.com/arisohandriputra/llhd-monitor.git
+cd llhd-monitor
+
+# Build (auto-detects compiler)
+make
+
+# Output
+bin/LLHDMonitor.exe
+```
+
+To clean build artifacts:
+
+```sh
+make clean
+```
+
+## Project Structure
+
+```
+llhd-monitor/
+├── src/
+│   ├── main.cpp        # Entry point and single-instance guard
+│   ├── mainwnd.cpp     # Main window and UI logic
+│   ├── mainwnd.h
+│   ├── smart.cpp       # S.M.A.R.T. and NVMe data acquisition
+│   ├── smart.h         # Structures, constants, attribute names
+│   ├── resource.h
+│   ├── app.rc          # Windows resource file
+│   ├── app.manifest    # Common Controls v6 manifest
+│   └── app.ico
+└── Makefile
+```
+
+## License
+
+Released under the **MIT License**. See [LICENSE](LICENSE) for details.
+
+## Author
+
+**Ari Sohandri Putra** — [github.com/arisohandriputra](https://github.com/arisohandriputra)
