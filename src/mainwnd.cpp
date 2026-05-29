@@ -1,3 +1,4 @@
+// Original Build Date : 13/03/2012
 // Author  : Ari Sohandri Putra
 // GitHub  : https://github.com/arisohandriputra
 // Project : LLHD Monitor - Low-Level HDD Monitor
@@ -529,7 +530,6 @@ LRESULT CALLBACK HealthBarWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
             int cyBar = rc.bottom - rc.top;
             int rx    = 5;
 
-            /* --- single color based on health, top-to-bottom gradient for glass look --- */
             {
                 COLORREF clrTop, clrBot;
                 if (nHealth < 0 || nHealth == 100) {
@@ -840,18 +840,15 @@ LRESULT CALLBACK DriveBtnWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 
             int rx = 6;
 
-            /* --- fill entire buffer with window background first (corners will show this) --- */
             {
                 HBRUSH hbrWinBg = CreateSolidBrush(CLR_BG);
                 FillRect(hdc, &rcBuf, hbrWinBg);
                 DeleteObject(hbrWinBg);
             }
 
-            /* --- clip to rounded rect so only rounded area gets painted --- */
             HRGN hClipRgn = CreateRoundRectRgn(rcBuf.left, rcBuf.top, rcBuf.right+1, rcBuf.bottom+1, rx*2, rx*2);
             SelectClipRgn(hdc, hClipRgn);
 
-            /* --- glass gradient background --- */
             {
                 int y;
                 COLORREF clrTop, clrBot;
@@ -879,10 +876,8 @@ LRESULT CALLBACK DriveBtnWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
                 }
             }
 
-            /* --- glass shine (upper highlight) --- */
             { RECT rcShineBtn = { 0, 0, w, h }; DrawGlassShine(hdc, &rcShineBtn); }
 
-            /* --- border drawn last over clip region --- */
             {
                 HPEN   hpBord = CreatePen(PS_SOLID, 1, clrBorder);
                 HPEN   hpOld  = (HPEN)SelectObject(hdc, hpBord);
@@ -930,7 +925,7 @@ LRESULT CALLBACK DriveBtnWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 
                 char szTempStr[24];
                 if (pD->nTemperatureC > 0)
-                    _snprintf(szTempStr, sizeof(szTempStr), "%d�C", pD->nTemperatureC);
+                    _snprintf(szTempStr, sizeof(szTempStr), "%d Celcius", pD->nTemperatureC);
                 else
                     szTempStr[0] = '\0';
 
@@ -967,7 +962,6 @@ LRESULT CALLBACK DriveBtnWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
                 SetTextColor(hdc, clrH);
                 DrawTextA(hdc, szHealth, -1, &rcHealth, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
 
-                /* Bottom row: capacity left, temperature right */
                 {
                     RECT rcCap  = { rcBuf.left + 8, rcBuf.bottom - 17, (rcBuf.left + rcBuf.right) / 2, rcBuf.bottom - 4 };
                     RECT rcTmp  = { (rcBuf.left + rcBuf.right) / 2, rcBuf.bottom - 17, rcBuf.right - 8, rcBuf.bottom - 4 };
@@ -1165,7 +1159,7 @@ void UpdateDriveInfo(HWND hWnd, int nDriveIdx)
     }
 
     if (pInfo->nTemperatureC > 0)
-        _snprintf(szBuf, sizeof(szBuf), "%d�C", pInfo->nTemperatureC);
+        _snprintf(szBuf, sizeof(szBuf), "%d Celcius", pInfo->nTemperatureC);
     else
         strcpy(szBuf, "-");
     SetDlgItemTextA(hWnd, IDC_TEMP_STATIC, szBuf);
@@ -1244,7 +1238,7 @@ void UpdateDriveInfo(HWND hWnd, int nDriveIdx)
         SetDlgItemTextA(hWnd, IDC_PREDICT_STATIC, "!! DRIVE FAILURE PREDICTED BY DRIVE !!");
     } else if (pInfo->nHealthPercent < 40) {
         char szMsg[320];
-        _snprintf(szMsg, sizeof(szMsg), "!! Poor Health — Back up data immediately!  %s", szReason);
+        _snprintf(szMsg, sizeof(szMsg), "!! Poor Health â€” Back up data immediately!  %s", szReason);
         SetDlgItemTextA(hWnd, IDC_PREDICT_STATIC, szMsg);
     } else if (pInfo->nHealthPercent < 70) {
         char szMsg[320];
@@ -1588,7 +1582,6 @@ void UpdateAttrList(HWND hWnd, int nDriveIdx)
         nDesired = 1;
     }
     else if (pInfo->bIsNVMe && !pInfo->bSMART_Supported) {
-        /* NVMe detected but health log could not be read */
         ATTR_ROW* r = &rows[0];
         strcpy(r->col[0], "--");
         strcpy(r->col[1], "NVMe SMART: Run as Administrator and click Refresh");
@@ -1855,13 +1848,13 @@ static LRESULT CALLBACK AboutDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM
             SetTextColor(hdc, RGB(30, 35, 50));
 
             const char* szLines[] = {
-                "Author   :  Ari Sohandri Putra",
-                "www.hddmonitor.github.io",
+                "Copyriht (c) 2012 Ari Sohandri Putra.",
+                "All Rights Reserved.",
                 "",
                 "Drive support :",
                 "    \xB7  ATA / SATA / SSD",
-                "    \xB7  NVMe / M.2 SSD",
-                "    \xB7  USB / Disk Enclosure",
+                "",
+				"Thank's for using this program ;)",
                 NULL
             };
             int y = 96;
@@ -2005,7 +1998,6 @@ void CreateControls(HWND hWnd)
     int nValX    = nInfoX + nLblW + 4;
     int nValW    = WINDOW_W - nValX - 8;
 
-    /* --- Row 0: Model --- */
     { HWND h = CreateWindowExA(0, "STATIC", "Model",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
         nInfoX, nInfoY + (nInfoH + nInfoGap) * 0, nLblW, nInfoH,
@@ -2017,7 +2009,6 @@ void CreateControls(HWND hWnd)
         hWnd, (HMENU)IDC_MODEL_STATIC, g_hInst, NULL);
       SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
-    /* --- Row 1: Serial No. --- */
     { HWND h = CreateWindowExA(0, "STATIC", "Serial No.",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
         nInfoX, nInfoY + (nInfoH + nInfoGap) * 1, nLblW, nInfoH,
@@ -2029,7 +2020,6 @@ void CreateControls(HWND hWnd)
         hWnd, (HMENU)IDC_SERIAL_STATIC, g_hInst, NULL);
       SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
-    /* --- Row 2: Firmware --- */
     { HWND h = CreateWindowExA(0, "STATIC", "Firmware",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
         nInfoX, nInfoY + (nInfoH + nInfoGap) * 2, nLblW, nInfoH,
@@ -2041,7 +2031,6 @@ void CreateControls(HWND hWnd)
         hWnd, (HMENU)IDC_FIRMWARE_STATIC, g_hInst, NULL);
       SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
-    /* --- Row 3: Capacity --- */
     { HWND h = CreateWindowExA(0, "STATIC", "Capacity",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
         nInfoX, nInfoY + (nInfoH + nInfoGap) * 3, nLblW, nInfoH,
@@ -2053,7 +2042,6 @@ void CreateControls(HWND hWnd)
         hWnd, (HMENU)IDC_SIZE_STATIC, g_hInst, NULL);
       SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
-    /* --- Row 4: Temperature --- */
     { HWND h = CreateWindowExA(0, "STATIC", "Temperature",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
         nInfoX, nInfoY + (nInfoH + nInfoGap) * 4, nLblW, nInfoH,
@@ -2065,7 +2053,6 @@ void CreateControls(HWND hWnd)
         hWnd, (HMENU)IDC_TEMP_STATIC, g_hInst, NULL);
       SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
-    /* --- Row 5: S.M.A.R.T. --- */
     { HWND h = CreateWindowExA(0, "STATIC", "S.M.A.R.T.",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
         nInfoX, nInfoY + (nInfoH + nInfoGap) * 5, nLblW, nInfoH,
@@ -2077,8 +2064,7 @@ void CreateControls(HWND hWnd)
         hWnd, (HMENU)IDC_STATUS_STATIC, g_hInst, NULL);
       SendMessage(h, WM_SETFONT, (WPARAM)g_hFontNormal, TRUE); }
 
-    /* --- Row 6: Read Speed --- */
-    { HWND h = CreateWindowExA(0, "STATIC", "Ave. Speed",
+    { HWND h = CreateWindowExA(0, "STATIC", "Max. Speed",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
         nInfoX, nInfoY + (nInfoH + nInfoGap) * 6, nLblW, nInfoH,
         hWnd, (HMENU)IDC_READ_SPEED_LABEL, g_hInst, NULL);
@@ -2125,7 +2111,6 @@ static LRESULT HandleCtlColor(HWND hWnd, WPARAM wParam)
     HDC  hdc     = (HDC)wParam;
 
 
-    /* Check if this is a label control (dim color) */
     HWND hSender = WindowFromDC(hdc);
     if (hSender) {
         int id = GetDlgCtrlID(hSender);
@@ -2559,9 +2544,6 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_APP_REFRESH_DONE:
         InterlockedExchange(&g_bScanBusy, 0);
         {
-
-
-
             UpdateDriveButtons(hWnd);
 
             if (g_nSelectedDrive >= g_nDriveCount) g_nSelectedDrive = 0;
@@ -2605,9 +2587,6 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 }
             }
 
-
-
-
             int nRightX = DRIVE_BTN_PANEL_W + 10;
             int nBarsW  = 190;
             int nInfoX  = nRightX + nBarsW + 10;
@@ -2620,7 +2599,6 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             int nValW2  = cxClient - nValX2 - 8;
             if (nValW2 < 40) nValW2 = 40;
             int nInfoY2 = 36, nInfoH2 = 18, nInfoGap2 = 4;
-            /* Resize label controls */
             { int lblIds[] = { IDC_MODEL_LABEL, IDC_SERIAL_LABEL, IDC_FIRMWARE_LABEL,
                                IDC_SIZE_LABEL, IDC_TEMP_LABEL, IDC_STATUS_LABEL,
                                IDC_READ_SPEED_LABEL };
@@ -2631,7 +2609,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                       nInfoY2 + (nInfoH2 + nInfoGap2) * k2, nLblW2, nInfoH2, SWP_NOZORDER);
               }
             }
-            /* Resize value controls */
+			
             { int valIds[] = { IDC_MODEL_STATIC, IDC_SERIAL_STATIC, IDC_FIRMWARE_STATIC,
                                IDC_SIZE_STATIC, IDC_TEMP_STATIC, IDC_STATUS_STATIC,
                                IDC_READ_SPEED_STATIC };

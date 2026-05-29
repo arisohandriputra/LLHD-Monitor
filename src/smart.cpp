@@ -1,3 +1,4 @@
+// Original Build Date : 13/03/2012
 // Author  : Ari Sohandri Putra
 // GitHub  : https://github.com/arisohandriputra
 // Project : LLHD Monitor - Low-Level HDD Monitor
@@ -216,7 +217,6 @@ BOOL IsNVMeDrive(HANDLE hDrive)
     if (bBusType == 17)
         return TRUE;
 
-    /* Use single buffer for both input and output - required by Windows */
     BYTE nvmeBuf[sizeof(MY_STORAGE_PROTOCOL_QUERY) + sizeof(NVME_HEALTH_INFO_LOG) + 64];
     ZeroMemory(nvmeBuf, sizeof(nvmeBuf));
     MY_STORAGE_PROTOCOL_QUERY* pQ = (MY_STORAGE_PROTOCOL_QUERY*)nvmeBuf;
@@ -239,7 +239,6 @@ BOOL IsNVMeDrive(HANDLE hDrive)
 
 static BOOL GetNVMeIdentify(HANDLE hDrive, DRIVE_INFO* pInfo)
 {
-    /* Single buffer: Windows needs same buffer for in/out with ProtocolSpecificProperty */
     BYTE bigBuf[sizeof(MY_STORAGE_PROTOCOL_QUERY) + 4096 + 64];
     ZeroMemory(bigBuf, sizeof(bigBuf));
     MY_STORAGE_PROTOCOL_QUERY* pQ = (MY_STORAGE_PROTOCOL_QUERY*)bigBuf;
@@ -302,7 +301,6 @@ static BOOL GetNVMeIdentify(HANDLE hDrive, DRIVE_INFO* pInfo)
 
 BOOL GetNVMeHealthLog(HANDLE hDrive, DRIVE_INFO* pInfo)
 {
-    /* Single buffer required: Windows writes output on top of input for ProtocolSpecificProperty */
     BYTE buf[sizeof(MY_STORAGE_PROTOCOL_QUERY) + sizeof(NVME_HEALTH_INFO_LOG) + 64];
     ZeroMemory(buf, sizeof(buf));
     MY_STORAGE_PROTOCOL_QUERY* pQ = (MY_STORAGE_PROTOCOL_QUERY*)buf;
@@ -323,7 +321,6 @@ BOOL GetNVMeHealthLog(HANDLE hDrive, DRIVE_INFO* pInfo)
     if (!bOK || dwBytes < (ULONG)(sizeof(ULONG) * 2 + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA) + 8))
         return FALSE;
 
-    /* Data starts at: Version(4) + Size(4) + ProtocolSpecificData(40) = offset 48 */
     BYTE* pData = buf + sizeof(ULONG) + sizeof(ULONG) + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
 
     BOOL bAllZero = TRUE;
@@ -360,13 +357,8 @@ static BOOL GetNVMeCapacity(HANDLE hDrive, DRIVE_INFO* pInfo)
     return FALSE;
 }
 
-/* Fallback NVMe health log using larger output buffer.
-   Some controllers (e.g. Samsung, SK Hynix, Micron NVMe) need a larger
-   descriptor buffer aligned to 4096 bytes to return health log data. */
 static BOOL GetNVMeHealthLogFallback(HANDLE hDrive, DRIVE_INFO* pInfo)
 {
-    /* Allocate a larger buffer on heap to handle controllers that return
-       more data than our stack-allocated MY_PROTOCOL_DATA_DESCRIPTOR */
 #define NVME_FALLBACK_BUF_SIZE 4096
     BYTE* pBuf = (BYTE*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, NVME_FALLBACK_BUF_SIZE);
     if (!pBuf) return FALSE;
@@ -392,9 +384,7 @@ static BOOL GetNVMeHealthLogFallback(HANDLE hDrive, DRIVE_INFO* pInfo)
         return FALSE;
     }
 
-    /* Data starts after Version(4) + Size(4) + ProtocolSpecificData struct */
     BYTE* pData = pBuf + sizeof(ULONG) + sizeof(ULONG) + sizeof(MY_STORAGE_PROTOCOL_SPECIFIC_DATA);
-    /* Check not all zero */
     BOOL bAllZero = TRUE;
     int k;
     for (k = 0; k < 16; k++) {
@@ -420,9 +410,6 @@ static BOOL GetNVMeHealthLogFallback(HANDLE hDrive, DRIVE_INFO* pInfo)
 #undef NVME_FALLBACK_BUF_SIZE
 }
 
-/* Detect M.2 SATA vs regular SATA by querying the adapter bus type.
-   BusType == 8 (SATA) with an SSD means M.2 SATA when connected via
-   an NVMe slot adapter, but here we just flag it correctly as SATA SSD. */
 static BYTE GetStorageBusType(HANDLE hDrive)
 {
     STORAGE_PROPERTY_QUERY spq;
@@ -440,7 +427,7 @@ static BYTE GetStorageBusType(HANDLE hDrive)
         return 0;
 
     if (dwBytes < 9) return 0;
-    return outBuf[8]; /* STORAGE_BUS_TYPE offset */
+    return outBuf[8]; 
 }
 
 static BOOL GetNVMeInfo(HANDLE hDrive, DRIVE_INFO* pInfo)
@@ -489,8 +476,6 @@ static BOOL GetNVMeInfo(HANDLE hDrive, DRIVE_INFO* pInfo)
 
     GetNVMeCapacity(hDrive, pInfo);
 
-    /* Try primary health log first; fall back to heap-buffer variant
-       for controllers that need a larger output buffer */
     if (!GetNVMeHealthLog(hDrive, pInfo))
         GetNVMeHealthLogFallback(hDrive, pInfo);
 
@@ -500,8 +485,6 @@ static BOOL GetNVMeInfo(HANDLE hDrive, DRIVE_INFO* pInfo)
     return TRUE;
 }
 
-/* Helper: try to read NVMe SMART via GetNVMeHealthLog or fallback.
-   Exposed so ScanDrives can retry after initial GetNVMeInfo. */
 BOOL GetNVMeHealthLogEx(HANDLE hDrive, DRIVE_INFO* pInfo)
 {
     if (GetNVMeHealthLog(hDrive, pInfo))
@@ -553,13 +536,8 @@ DRIVE_TYPE DetectDriveType(HANDLE hDrive, DRIVE_INFO* pInfo)
     if (pInfo->bIsUSB)
         return DRIVE_TYPE_USB;
 
-    /* Check bus type first — BusType 8 = SATA, 11 = SAS, 17 = NVMe.
-       M.2 SATA drives appear as BusType 8, same as 2.5" SATA.
-       We differentiate by checking if the adapter bus type comes back as
-       SATA AND the model name or media type suggests M.2 form factor. */
     BYTE bBusType = GetStorageBusType(hDrive);
 
-    /* Also query StorageDeviceProperty to check MediaType */
     STORAGE_PROPERTY_QUERY spq2;
     ZeroMemory(&spq2, sizeof(spq2));
     spq2.PropertyId = StorageDeviceProperty;
@@ -569,7 +547,7 @@ DRIVE_TYPE DetectDriveType(HANDLE hDrive, DRIVE_INFO* pInfo)
     DWORD dwDevBytes = 0;
     BOOL bHasDevProp = DeviceIoControl(hDrive, IOCTL_STORAGE_QUERY_PROPERTY,
         &spq2, sizeof(spq2), devBuf, sizeof(devBuf), &dwDevBytes, NULL);
-    BYTE bMediaType = bHasDevProp && dwDevBytes >= 8 ? devBuf[6] : 0; /* StorageMediaType */
+    BYTE bMediaType = bHasDevProp && dwDevBytes >= 8 ? devBuf[6] : 0; 
 
     BYTE inBuf[sizeof(SENDCMDINPARAMS) - 1 + IDENTIFY_BUFFER_SIZE];
     BYTE outBuf[sizeof(SENDCMDOUTPARAMS) - 1 + IDENTIFY_BUFFER_SIZE];
@@ -597,8 +575,6 @@ DRIVE_TYPE DetectDriveType(HANDLE hDrive, DRIVE_INFO* pInfo)
 
         WORD wRotRate = pIdent[217];
         if (wRotRate == 0x0001) {
-            /* SSD confirmed via ATA identify. Check if it's M.2 SATA:
-               form factor word 168 = 0x0003 means M.2, 0x0005 means M.2 2242/2280 */
             WORD wFormFactor = pIdent[168];
             if (wFormFactor == 0x0003 || wFormFactor == 0x0005)
                 return DRIVE_TYPE_M2_SATA;
@@ -608,8 +584,6 @@ DRIVE_TYPE DetectDriveType(HANDLE hDrive, DRIVE_INFO* pInfo)
             return DRIVE_TYPE_HDD;
     }
 
-    /* If BusType is SATA (8) and model name suggests SSD, call it SSD_SATA.
-       This catches M.2 SATA drives that don't respond to SMART_RCV_DRIVE_DATA. */
     if (bBusType == 8) {
         const char* szModel = pInfo->szModel;
         if (strstr(szModel, "SSD") || strstr(szModel, "Solid") ||
@@ -627,7 +601,6 @@ DRIVE_TYPE DetectDriveType(HANDLE hDrive, DRIVE_INFO* pInfo)
         strstr(szModel, "870") || strstr(szModel, "BX"))
         return DRIVE_TYPE_SSD_SATA;
 
-    /* Suppress "unused variable" warnings */
     (void)bMediaType;
 
     return DRIVE_TYPE_HDD;
@@ -1037,7 +1010,6 @@ BOOL GetSMARTThresholds(HANDLE hDrive, int nDrive, DRIVE_INFO* pInfo)
 
 BOOL GetSMARTViaStorageProtocol(HANDLE hDrive, DRIVE_INFO* pInfo)
 {
-    /* Single buffer for both input and output */
     BYTE buf[sizeof(MY_STORAGE_PROTOCOL_QUERY) + 512 + 64];
     ZeroMemory(buf, sizeof(buf));
     MY_STORAGE_PROTOCOL_QUERY* pQ = (MY_STORAGE_PROTOCOL_QUERY*)buf;
@@ -1520,8 +1492,6 @@ int ScanDrives(DRIVE_INFO* pDrives, int nMaxDrives)
 
         if (IsNVMeDrive(hDrive)) {
             if (GetNVMeInfo(hDrive, pInfo)) {
-                /* If health log failed inside GetNVMeInfo, try once more now
-                   (the drive handle is still open and valid at this point) */
                 if (!pInfo->bSMART_Supported)
                     GetNVMeHealthLogEx(hDrive, pInfo);
                 pInfo->nHealthPercent = CalculateHealthNVMe(pInfo);
@@ -1533,7 +1503,6 @@ int ScanDrives(DRIVE_INFO* pDrives, int nMaxDrives)
                 continue;
             }
             GetNVMeCapacity(hDrive, pInfo);
-            /* Last-chance health log attempt before giving up */
             GetNVMeHealthLogEx(hDrive, pInfo);
             if (pInfo->bSMART_Supported)
                 pInfo->nHealthPercent = CalculateHealthNVMe(pInfo);

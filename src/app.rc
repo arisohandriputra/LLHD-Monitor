@@ -1,3 +1,4 @@
+// Original Build Date : 13/03/2012
 // Author  : Ari Sohandri Putra
 // GitHub  : https://github.com/arisohandriputra
 // Project : LLHD Monitor - Low-Level HDD Monitor
@@ -25,10 +26,10 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName",      "Ari Sohandri Putra"
-            VALUE "FileDescription",  "LLHD Monitor - Low-Level HDD Monitor"
+            VALUE "FileDescription",  "Low-Level HDD Health Monitor"
             VALUE "FileVersion",      "1.0.0.0"
             VALUE "InternalName",     "LLHDMonitor"
-            VALUE "LegalCopyright",   "Copyright (C) 2025 Ari Sohandri Putra. All rights reserved."
+            VALUE "LegalCopyright",   "Copyright (C) 2012 Ari Sohandri Putra. All rights reserved."
             VALUE "OriginalFilename", "LLHDMonitor.exe"
             VALUE "ProductName",      "LLHD Monitor"
             VALUE "ProductVersion",   "1.0.0.0"
