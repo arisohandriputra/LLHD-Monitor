@@ -22,7 +22,7 @@ A free, lightweight Windows utility that reads **S.M.A.R.T. data** directly from
 
 ## Screenshots
 
-<img width="756" height="618" alt="image" src="https://github.com/user-attachments/assets/2a8e1ca1-9f3e-48f1-9771-03958680cbdc" />
+<img width="751" height="574" alt="Capture" src="https://github.com/user-attachments/assets/77122c26-c464-43bf-a607-107d87cc64b0" />
 
 ## Requirements
 
