@@ -1,103 +1,107 @@
-# LLHD Monitor - Low-Level HDD Health Monitor
+# LLHD Monitor
 
-A free, lightweight Windows utility that reads **S.M.A.R.T. data** directly from your HDD, SSD, NVMe, and USB drives and turns it into a plain health and performance score with live temperature, read/write speed measurement, and a system tray that keeps watch in the background.
+Low-Level HDD Health Monitor for Windows.
+Reads S.M.A.R.T. data directly from your drives and gives you a plain health score,
+live temperature, read/write speed, and a system tray icon that keeps watch in the background.
 
-**Website & Documentation → [hddmonitor.github.io](https://hddmonitor.github.io/)**
+Homepage: http://hddmonitor.github.io/
 
----
+
+## About
+
+Written on March 13, 2012 by Ari Sohandri Putra as a personal tool for monitoring
+hard drive health without having to deal with bloated third-party software.
+The source code here is preserved as-is from the original write date.
+It talks directly to the hardware through Windows IOCTL calls, no abstraction layers,
+no background services, no extra junk.
+
+<img width="751" height="574" alt="Capture" src="https://github.com/user-attachments/assets/0e078788-322b-4c13-8e2b-ec890f866c19" />
 
 ## Features
 
-- Real-time **health and performance scores** calculated from live S.M.A.R.T. attributes, refreshed every 5 seconds
-- Full **S.M.A.R.T. attribute table** with 80+ attributes including current value, worst value, threshold, raw reading, and pass/fail status
-- **NVMe support** via Health Info Log Page (0x02), including composite temperature, available spare, percentage used, power cycles, unsafe shutdowns, media errors, and more
-- Supports **HDD, SATA SSD, M.2 SATA SSD, NVMe SSD, and USB/External** drives
-- **Live temperature** (°C) and **read/write speed** (MB/s) per drive
-- **System tray** with a per-drive health icon: hover for tooltip, right-click for menu, balloon notifications on health changes
-- **Start with Windows** - optional autostart on login, toggleable from the tray menu, launches minimized to tray so it stays out of your way
-- Multi-drive sidebar with up to 8 drives and color-coded health indicators (green >= 70%, yellow 40-69%, red < 40%)
-- **Single-instance guard** - launching again brings the existing window to the front
-- Direct low-level hardware access via Windows IOCTL with no middle layers and no abstraction
-- Single portable `.exe` under 1 MB with no installer, no background service, and no telemetry
+- Health and performance scores calculated from live S.M.A.R.T. data, refreshed every 5 seconds
+- Full S.M.A.R.T. attribute table with 80+ attributes (current, worst, threshold, raw, pass/fail)
+- NVMe support via Health Info Log Page (0x02)
+- Supports HDD, SATA SSD, M.2 SATA SSD, NVMe SSD, and USB/external drives
+- Live temperature (C) and read/write speed (MB/s) per drive
+- System tray icon per drive with tooltip, right-click menu, and balloon notifications on health changes
+- Optional autostart on Windows login, launches minimized to tray
+- Up to 8 drives in the sidebar, color coded green (>=70%), yellow (40-69%), red (<40%)
+- Single instance, launching again just brings the existing window forward
+- Single portable .exe under 1 MB, no installer, no background service, no telemetry
 
-## Screenshots
-
-<img width="751" height="574" alt="Capture" src="https://github.com/user-attachments/assets/77122c26-c464-43bf-a607-107d87cc64b0" />
 
 ## Requirements
 
-| | |
-|---|---|
-| OS | Windows 7 / 8 / 10 / 11 (64-bit recommended) |
-| Runtime | None - statically linked, no external dependencies |
+- Windows 7 / 8 / 10 / 11 (64-bit recommended)
+- No runtime or external dependencies, statically linked
+
 
 ## Usage
 
-1. Download `LLHDMonitor.exe` from [Releases](../../releases)
-2. Double-click to launch. Windows will show a **UAC prompt** - click **Yes**
-3. Your drives appear automatically in the left panel. Click any drive to see its full health report
+1. Download LLHDMonitor.exe from the Releases page
+2. Double-click to run. Windows will ask for UAC permission, click Yes
+3. Your drives appear in the left panel automatically. Click any drive to see its report.
 
-> The application's embedded manifest requests administrator rights automatically (`requireAdministrator`). You do not need to right-click and choose "Run as administrator" - the UAC prompt appears on its own. LLHD Monitor does **not** write anything to your drives.
+The app requests admin rights on its own via the embedded manifest.
+You do not need to right-click "Run as administrator".
+LLHD Monitor does not write anything to your drives.
 
-On first launch, **Start with Windows** is enabled automatically. You can toggle it any time by right-clicking the tray icon.
+Start with Windows is enabled by default on first launch.
+You can toggle it anytime from the tray icon right-click menu.
 
-For a full usage guide, see the **[Documentation](https://hddmonitor.github.io/docs.html)**.
+Docs: http://hddmonitor.github.io/docs.html
 
-## Building from Source
-
-Requires **MinGW-w64** (`g++` + `windres`).
-
-```sh
-# Clone the repo
-git clone https://github.com/arisohandriputra/llhd-monitor.git
-cd llhd-monitor
-
-# Build (auto-detects compiler)
-make
-
-# Output
-bin/LLHDMonitor.exe
-```
-
-To clean build artifacts:
-
-```sh
-make clean
-```
-
-Cross-compiling on Linux requires `x86_64-w64-mingw32-g++` and `x86_64-w64-mingw32-windres`. The Makefile detects the platform and selects the right toolchain automatically.
-
-## Project Structure
-
-```
-llhd-monitor/
-├── src/
-│   ├── main.cpp        # Entry point, single-instance guard, window registration
-│   ├── mainwnd.cpp     # Main window, UI logic, system tray, autostart
-│   ├── mainwnd.h       # Window constants, control IDs, function declarations
-│   ├── smart.cpp       # S.M.A.R.T. and NVMe data acquisition, speed measurement
-│   ├── smart.h         # Structures, constants, 80+ attribute name table
-│   ├── resource.h      # Resource ID definitions
-│   ├── app.rc          # Windows resource file (icon, version info)
-│   ├── app.manifest    # UAC elevation + Common Controls v6 + DPI awareness
-│   └── app.ico
-└── Makefile
-```
 
 ## Drive Support
 
-| Type | Detection Method |
-|---|---|
-| HDD | `SMART_SEND_DRIVE_COMMAND` + ATA pass-through |
-| SATA SSD | S.M.A.R.T. via `SMART_RCV_DRIVE_DATA` |
-| M.2 SATA SSD | Auto-detected by querying adapter bus type |
-| NVMe SSD | `StorageDeviceProtocolSpecificProperty` (Log Page 0x02) |
-| USB / External | SAT (SCSI/ATA Translation) pass-through |
+    HDD             SMART_SEND_DRIVE_COMMAND + ATA pass-through
+    SATA SSD        S.M.A.R.T. via SMART_RCV_DRIVE_DATA
+    M.2 SATA SSD    auto-detected by querying adapter bus type
+    NVMe SSD        StorageDeviceProtocolSpecificProperty (Log Page 0x02)
+    USB / External  SAT (SCSI/ATA Translation) pass-through
+
+
+## Building
+
+Requires MinGW-w64 (g++ and windres).
+
+    git clone https://github.com/arisohandriputra/llhd-monitor.git
+    cd llhd-monitor
+    make
+
+Output: bin/LLHDMonitor.exe
+
+Clean build artifacts:
+
+    make clean
+
+Cross-compiling on Linux requires x86_64-w64-mingw32-g++ and x86_64-w64-mingw32-windres.
+The Makefile detects the platform and picks the right toolchain automatically.
+
+
+## Source Layout
+
+    llhd-monitor/
+    |-- src/
+    |   |-- main.cpp       entry point, single-instance guard, window registration
+    |   |-- mainwnd.cpp    main window, UI logic, system tray, autostart
+    |   |-- mainwnd.h      window constants, control IDs, function declarations
+    |   |-- smart.cpp      S.M.A.R.T. and NVMe data acquisition, speed measurement
+    |   |-- smart.h        structures, constants, 80+ attribute name table
+    |   |-- resource.h     resource ID definitions
+    |   |-- app.rc         Windows resource file (icon, version info)
+    |   |-- app.manifest   UAC elevation + Common Controls v6 + DPI awareness
+    |   `-- app.ico
+    `-- Makefile
+
 
 ## License
 
-Released under the **MIT License**. See [LICENSE](LICENSE) for details.
+MIT. See LICENSE.
+
 
 ## Author
 
-**Ari Sohandri Putra** - [github.com/arisohandriputra](https://github.com/arisohandriputra)
+Ari Sohandri Putra
+http://github.com/arisohandriputra
