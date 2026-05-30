@@ -2025,7 +2025,7 @@ static LRESULT CALLBACK AboutDlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM
             SetTextColor(hdc, RGB(30, 35, 50));
 
             const char* szLines[] = {
-                "Copyriht (c) 2012 Ari Sohandri Putra.",
+                "Copyriht (c) 2026 Ari Sohandri Putra.",
                 "All Rights Reserved.",
                 "",
                 "Drive support :",
